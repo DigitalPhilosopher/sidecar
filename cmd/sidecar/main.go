@@ -18,6 +18,7 @@ import (
 	"github.com/sst/sidecar/internal/keymap"
 	"github.com/sst/sidecar/internal/plugin"
 	"github.com/sst/sidecar/internal/plugins/conversations"
+	"github.com/sst/sidecar/internal/plugins/filebrowser"
 	"github.com/sst/sidecar/internal/plugins/gitstatus"
 	"github.com/sst/sidecar/internal/plugins/tdmonitor"
 	"github.com/sst/sidecar/internal/state"
@@ -93,6 +94,7 @@ func main() {
 	registry.Register(gitstatus.New())
 	registry.Register(tdmonitor.New())
 	registry.Register(conversations.New())
+	registry.Register(filebrowser.New())
 
 	// Create keymap registry
 	km := keymap.NewRegistry()

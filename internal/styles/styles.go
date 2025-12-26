@@ -178,6 +178,32 @@ var (
 			Bold(true)
 )
 
+// File browser styles
+var (
+	// Directory names - bold blue
+	FileBrowserDir = lipgloss.NewStyle().
+			Foreground(Secondary).
+			Bold(true)
+
+	// Regular file names
+	FileBrowserFile = lipgloss.NewStyle().
+			Foreground(TextPrimary)
+
+	// Gitignored files - muted/dimmed
+	FileBrowserIgnored = lipgloss.NewStyle().
+				Foreground(TextSubtle)
+
+	// Line numbers in preview
+	FileBrowserLineNumber = lipgloss.NewStyle().
+				Foreground(TextMuted).
+				Width(5).
+				AlignHorizontal(lipgloss.Right)
+
+	// Tree icons (>, +)
+	FileBrowserIcon = lipgloss.NewStyle().
+			Foreground(TextMuted)
+)
+
 // Footer and header
 var (
 	Footer = lipgloss.NewStyle().

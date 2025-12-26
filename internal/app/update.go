@@ -1,9 +1,11 @@
 package app
 
 import (
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sst/sidecar/internal/plugins/filebrowser"
 )
 
 // Update handles all messages and returns the updated model and commands.
@@ -45,6 +47,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastError = msg.Err
 		m.ShowToast("Error: "+msg.Err.Error(), 5*time.Second)
 		return m, nil
+
+	case filebrowser.OpenFileMsg:
+		// Open file in editor using tea.ExecProcess
+		c := exec.Command(msg.Editor, msg.Path)
+		return m, tea.ExecProcess(c, func(err error) tea.Msg {
+			if err != nil {
+				return ErrorMsg{Err: err}
+			}
+			return RefreshMsg{}
+		})
 	}
 
 	// Forward other messages to active plugin
@@ -114,6 +126,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.FocusPluginByID("td-monitor")
 	case "c":
 		return m, m.FocusPluginByID("conversations")
+	case "f":
+		return m, m.FocusPluginByID("file-browser")
 	}
 
 	// Toggles
