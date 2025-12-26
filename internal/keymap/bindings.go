@@ -36,9 +36,13 @@ func DefaultBindings() []Binding {
 		// Git Status context
 		{Key: "s", Command: "stage-file", Context: "git-status"},
 		{Key: "u", Command: "unstage-file", Context: "git-status"},
+		{Key: "S", Command: "stage-all", Context: "git-status"},
+		{Key: "c", Command: "commit", Context: "git-status"},
 		{Key: "d", Command: "show-diff", Context: "git-status"},
 		{Key: "D", Command: "show-diff-staged", Context: "git-status"},
 		{Key: "v", Command: "toggle-diff-mode", Context: "git-status"},
+		{Key: "h", Command: "show-history", Context: "git-status"},
+		{Key: "o", Command: "open-file", Context: "git-status"},
 		{Key: "enter", Command: "show-diff", Context: "git-status"},
 
 		// Git Diff context
@@ -63,6 +67,11 @@ func DefaultBindings() []Binding {
 		{Key: "esc", Command: "back", Context: "conversation-detail"},
 		{Key: "j", Command: "scroll", Context: "conversation-detail"},
 		{Key: "k", Command: "scroll", Context: "conversation-detail"},
+
+		// Git Commit context (commit message editor)
+		{Key: "esc", Command: "cancel", Context: "git-commit"},
+		{Key: "alt+enter", Command: "execute-commit", Context: "git-commit"},
+		{Key: "alt+s", Command: "execute-commit", Context: "git-commit"},
 	}
 }
 

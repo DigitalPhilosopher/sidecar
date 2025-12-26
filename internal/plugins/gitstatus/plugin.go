@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sst/sidecar/internal/app"
 	"github.com/sst/sidecar/internal/plugin"
 	"github.com/sst/sidecar/internal/state"
 )
@@ -144,7 +145,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.updateCommit(msg)
 		}
 
-	case RefreshMsg:
+	case app.RefreshMsg:
 		return p, p.refresh()
 
 	case WatchEventMsg:
@@ -600,7 +601,6 @@ func countLines(s string) int {
 }
 
 // Message types
-type RefreshMsg struct{}
 type RefreshDoneMsg struct{}
 type WatchEventMsg struct{}
 type WatchStartedMsg struct{}
@@ -699,7 +699,7 @@ func (p *Plugin) ensureCommitDetailCursorVisible() {
 // TickCmd returns a command that triggers a refresh every second.
 func TickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return RefreshMsg{}
+		return app.RefreshMsg{}
 	})
 }
 
