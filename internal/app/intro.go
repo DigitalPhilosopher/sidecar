@@ -82,13 +82,13 @@ func NewIntroModel() IntroModel {
 
 		letters[i] = &IntroLetter{
 			Char:         char,
-			CurrentX:     -20.0 - float64(i)*10.0, // Start further left and more spaced out
-			TargetX:      float64(i),              // Target is adjacent index
-			OvershootMax: float64(i) + 0.5 + float64(i)*0.1, // Fan out slightly past target
+			CurrentX:     -15.0 - float64(i)*8.0,
+			TargetX:      float64(i),
+			OvershootMax: float64(i) * 2.5, // Spread out significantly (space between letters)
 			StartColor:   hexToRGB(startColors[i%len(startColors)]),
 			EndColor:     targetColor,
 			CurrentColor: hexToRGB(startColors[i%len(startColors)]),
-			Delay:        time.Duration(i) * 120 * time.Millisecond,
+			Delay:        time.Duration(i) * 80 * time.Millisecond,
 		}
 	}
 
@@ -183,21 +183,27 @@ func (m IntroModel) View() string {
 		return ""
 	}
 
-	// We need to render the string "Sidecar" (length 7)
-	// We'll create a buffer large enough to hold the text at target positions.
-	// Since TargetX goes from 0 to 6, a buffer of size 7 is sufficient for the final state.
-	// However, during animation, letters might be at negative positions (hidden)
-	// or between positions. We'll map to the nearest integer index.
+	// Calculate required width based on current positions
+	minX := 0
+	maxX := len(m.Letters) // Minimum width is the final string length
 
-	length := len(m.Letters)
-	buf := make([]string, length)
+	for _, l := range m.Letters {
+		x := int(math.Round(l.CurrentX))
+		if x > maxX {
+			maxX = x
+		}
+	}
+	
+	// Add a little padding to the width to avoid clipping the last character during movement
+	width := maxX + 1
+	buf := make([]string, width)
 	for i := range buf {
 		buf[i] = " "
 	}
 
 	for _, l := range m.Letters {
 		x := int(math.Round(l.CurrentX))
-		if x >= 0 && x < length {
+		if x >= minX && x < width {
 			style := lipgloss.NewStyle().Foreground(l.CurrentColor.toLipgloss()).Bold(true)
 			buf[x] = style.Render(string(l.Char))
 		}
