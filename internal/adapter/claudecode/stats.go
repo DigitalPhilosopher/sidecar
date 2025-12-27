@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -95,14 +96,13 @@ func (s *StatsCache) GetPeakHours(top int) []struct {
 		hours = append(hours, hourCount{h, c})
 	}
 
-	// Sort by count descending
-	for i := 0; i < len(hours)-1; i++ {
-		for j := i + 1; j < len(hours); j++ {
-			if hours[j].Count > hours[i].Count {
-				hours[i], hours[j] = hours[j], hours[i]
-			}
+	// Sort by count descending, then by hour ascending for stable ordering
+	sort.Slice(hours, func(i, j int) bool {
+		if hours[i].Count != hours[j].Count {
+			return hours[i].Count > hours[j].Count // descending by count
 		}
-	}
+		return hours[i].Hour < hours[j].Hour // ascending by hour for ties
+	})
 
 	if len(hours) > top {
 		hours = hours[:top]

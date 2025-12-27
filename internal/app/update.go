@@ -74,8 +74,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Execute the selected command from the palette
 		m.showPalette = false
 		m.updateContext()
-		// Dispatch the command via keymap registry
-		// For now, just close the palette - command execution will be added
+		// Look up and execute the command
+		if cmd, ok := m.keymap.GetCommand(msg.CommandID); ok && cmd.Handler != nil {
+			return m, cmd.Handler()
+		}
 		return m, nil
 	}
 
@@ -165,7 +167,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.NextPlugin()
 	case "shift+tab":
 		return m, m.PrevPlugin()
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+	case "1", "2", "3", "4":
 		// Only switch plugins in global context; forward to plugin otherwise
 		// (e.g., td-monitor uses 1,2,3 for pane switching)
 		if m.activeContext == "global" || m.activeContext == "" {

@@ -166,6 +166,15 @@ func (r *Registry) ResetPending() {
 	r.pendingKey = ""
 }
 
+// GetCommand retrieves a command by ID.
+// Returns the command and true if found, or zero value and false otherwise.
+func (r *Registry) GetCommand(id string) (Command, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cmd, ok := r.commands[id]
+	return cmd, ok
+}
+
 // BindingsForContext returns all bindings for a given context.
 func (r *Registry) BindingsForContext(context string) []Binding {
 	r.mu.RLock()

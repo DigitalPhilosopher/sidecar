@@ -131,12 +131,14 @@ func determineLayer(bindingContext, activeContext, pluginContext string) Layer {
 // formatCommandID converts a command ID to a readable name.
 // "stage-file" -> "Stage file"
 func formatCommandID(id string) string {
-	words := strings.Split(id, "-")
-	if len(words) == 0 {
-		return id
+	if id == "" {
+		return ""
 	}
-	// Capitalize first word
-	words[0] = strings.Title(words[0])
+	words := strings.Split(id, "-")
+	// Capitalize first word (avoid deprecated strings.Title)
+	if len(words[0]) > 0 {
+		words[0] = strings.ToUpper(words[0][:1]) + words[0][1:]
+	}
 	return strings.Join(words, " ")
 }
 

@@ -190,3 +190,33 @@ func TestRegistry_SpecialKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistry_GetCommand(t *testing.T) {
+	r := NewRegistry()
+
+	// Register a command
+	r.RegisterCommand(Command{
+		ID:      "test-cmd",
+		Name:    "Test Command",
+		Handler: func() tea.Cmd { return nil },
+		Context: "global",
+	})
+
+	// Test finding existing command
+	cmd, ok := r.GetCommand("test-cmd")
+	if !ok {
+		t.Error("GetCommand should find registered command")
+	}
+	if cmd.ID != "test-cmd" {
+		t.Errorf("GetCommand returned wrong ID: got %q, want %q", cmd.ID, "test-cmd")
+	}
+	if cmd.Name != "Test Command" {
+		t.Errorf("GetCommand returned wrong Name: got %q, want %q", cmd.Name, "Test Command")
+	}
+
+	// Test missing command
+	_, ok = r.GetCommand("nonexistent")
+	if ok {
+		t.Error("GetCommand should return false for missing command")
+	}
+}

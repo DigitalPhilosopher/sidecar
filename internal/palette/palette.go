@@ -187,14 +187,15 @@ func (m *Model) moveCursor(delta int) {
 	m.cursor += delta
 
 	// Clamp to valid range
+	if len(m.filtered) == 0 {
+		m.cursor = 0
+		return
+	}
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
 	}
 
 	// Adjust scroll offset to keep cursor visible
