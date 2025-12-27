@@ -146,9 +146,9 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 		sb.WriteString(styles.StatusInProgress.Render("Pushing..."))
 		sb.WriteString("\n")
 	} else if p.pushError != "" {
-		// Truncate error if too long
+		// Truncate error if too long (account for "✗ " prefix)
 		errMsg := p.pushError
-		maxLen := p.sidebarWidth - 6
+		maxLen := p.sidebarWidth - 8 // 2 for "✗ " prefix + 6 for padding
 		if len(errMsg) > maxLen && maxLen > 3 {
 			errMsg = errMsg[:maxLen-3] + "..."
 		}

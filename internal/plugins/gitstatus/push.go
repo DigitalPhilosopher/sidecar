@@ -1,6 +1,7 @@
 package gitstatus
 
 import (
+	"errors"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -21,7 +22,8 @@ type PushStatus struct {
 // GetPushStatus retrieves the push status for the current branch.
 // Returns a PushStatus struct with information about ahead/behind counts,
 // unpushed commits, and upstream configuration.
-func GetPushStatus(workDir string) (*PushStatus, error) {
+// Always returns a valid PushStatus (may be minimal if operations fail).
+func GetPushStatus(workDir string) *PushStatus {
 	status := &PushStatus{}
 
 	// Check if HEAD is detached
@@ -29,13 +31,13 @@ func GetPushStatus(workDir string) (*PushStatus, error) {
 	branchCmd.Dir = workDir
 	branchOutput, err := branchCmd.Output()
 	if err != nil {
-		return status, nil // Return empty status on error
+		return status // Return empty status on error
 	}
 	status.CurrentBranch = strings.TrimSpace(string(branchOutput))
 	status.DetachedHead = status.CurrentBranch == ""
 
 	if status.DetachedHead {
-		return status, nil // No push status for detached HEAD
+		return status // No push status for detached HEAD
 	}
 
 	// Get upstream branch name
@@ -46,7 +48,7 @@ func GetPushStatus(workDir string) (*PushStatus, error) {
 		// No upstream configured - this is not an error, just means
 		// the branch has never been pushed or has no tracking branch
 		status.HasUpstream = false
-		return status, nil
+		return status
 	}
 	status.HasUpstream = true
 	status.UpstreamBranch = strings.TrimSpace(string(upstreamOutput))
@@ -80,19 +82,20 @@ func GetPushStatus(workDir string) (*PushStatus, error) {
 		}
 	}
 
-	return status, nil
+	return status
 }
 
 // IsCommitPushed checks if a commit hash is pushed to the upstream.
 // Returns true if the commit is in the upstream branch.
+// Hash can be either full (40 chars) or short (7+ chars).
 func (ps *PushStatus) IsCommitPushed(hash string) bool {
 	if !ps.HasUpstream {
 		return false // No upstream means nothing is pushed
 	}
-	// Check if hash is in unpushed list
+	// Check if hash matches any unpushed commit (UnpushedHashes are full hashes)
 	for _, unpushed := range ps.UnpushedHashes {
-		if strings.HasPrefix(unpushed, hash) || strings.HasPrefix(hash, unpushed) {
-			return false
+		if strings.HasPrefix(unpushed, hash) {
+			return false // This commit is in the unpushed list
 		}
 	}
 	return true // Not in unpushed list means it's pushed
@@ -107,7 +110,11 @@ func ExecutePush(workDir string, force bool) (string, error) {
 	}
 
 	// For new branches, set upstream automatically
-	args = append(args, "-u", "origin", "HEAD")
+	remote := GetRemoteName(workDir)
+	if remote == "" {
+		return "", &PushError{Output: "No remote configured", Err: errors.New("no remote configured")}
+	}
+	args = append(args, "-u", remote, "HEAD")
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = workDir

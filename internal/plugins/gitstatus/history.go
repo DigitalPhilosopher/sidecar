@@ -215,7 +215,7 @@ func GetCommitHistoryWithPushStatus(workDir string, limit int) ([]*Commit, *Push
 		return nil, nil, err
 	}
 
-	pushStatus, _ := GetPushStatus(workDir)
+	pushStatus := GetPushStatus(workDir)
 	PopulatePushStatus(commits, pushStatus)
 
 	return commits, pushStatus, nil
