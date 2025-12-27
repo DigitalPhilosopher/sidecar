@@ -29,13 +29,15 @@ type CapabilitySet map[Capability]bool
 
 // Session represents an AI coding session.
 type Session struct {
-	ID        string
-	Name      string
-	Slug      string // Short identifier for display (e.g., "ses_abc123")
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Duration  time.Duration
-	IsActive  bool
+	ID          string
+	Name        string
+	Slug        string // Short identifier for display (e.g., "ses_abc123")
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Duration    time.Duration
+	IsActive    bool
+	TotalTokens int     // Sum of input + output tokens
+	EstCost     float64 // Estimated cost in dollars
 }
 
 // ThinkingBlock represents Claude's extended thinking content.

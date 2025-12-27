@@ -95,13 +95,15 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		}
 
 		sessions = append(sessions, adapter.Session{
-			ID:        meta.SessionID,
-			Name:      name,
-			Slug:      meta.Slug,
-			CreatedAt: meta.FirstMsg,
-			UpdatedAt: meta.LastMsg,
-			Duration:  meta.LastMsg.Sub(meta.FirstMsg),
-			IsActive:  time.Since(meta.LastMsg) < 5*time.Minute,
+			ID:          meta.SessionID,
+			Name:        name,
+			Slug:        meta.Slug,
+			CreatedAt:   meta.FirstMsg,
+			UpdatedAt:   meta.LastMsg,
+			Duration:    meta.LastMsg.Sub(meta.FirstMsg),
+			IsActive:    time.Since(meta.LastMsg) < 5*time.Minute,
+			TotalTokens: meta.TotalTokens,
+			EstCost:     meta.EstCost,
 		})
 	}
 
@@ -245,6 +247,9 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
 
+	modelCounts := make(map[string]int)
+	modelTokens := make(map[string]struct{ in, out, cache int })
+
 	for scanner.Scan() {
 		var raw RawMessage
 		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
@@ -268,6 +273,54 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 		}
 		meta.LastMsg = raw.Timestamp
 		meta.MsgCount++
+
+		// Accumulate token usage from assistant messages
+		if raw.Message != nil && raw.Message.Usage != nil {
+			usage := raw.Message.Usage
+			meta.TotalTokens += usage.InputTokens + usage.OutputTokens
+
+			// Track per-model usage for cost calculation
+			model := raw.Message.Model
+			if model != "" {
+				modelCounts[model]++
+				mt := modelTokens[model]
+				mt.in += usage.InputTokens
+				mt.out += usage.OutputTokens
+				mt.cache += usage.CacheReadInputTokens
+				modelTokens[model] = mt
+			}
+		}
+	}
+
+	// Determine primary model and calculate cost
+	var maxCount int
+	for model, count := range modelCounts {
+		if count > maxCount {
+			maxCount = count
+			meta.PrimaryModel = model
+		}
+	}
+
+	// Calculate cost per model
+	for model, mt := range modelTokens {
+		var inRate, outRate float64
+		switch {
+		case strings.Contains(model, "opus"):
+			inRate, outRate = 15.0, 75.0
+		case strings.Contains(model, "sonnet"):
+			inRate, outRate = 3.0, 15.0
+		case strings.Contains(model, "haiku"):
+			inRate, outRate = 0.25, 1.25
+		default:
+			inRate, outRate = 3.0, 15.0
+		}
+		regularIn := mt.in - mt.cache
+		if regularIn < 0 {
+			regularIn = 0
+		}
+		meta.EstCost += float64(mt.cache)*inRate*0.1/1_000_000 +
+			float64(regularIn)*inRate/1_000_000 +
+			float64(mt.out)*outRate/1_000_000
 	}
 
 	if meta.FirstMsg.IsZero() {

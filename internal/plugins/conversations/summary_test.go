@@ -282,3 +282,48 @@ func TestGroupSessionsByTime_EmptyGroups(t *testing.T) {
 		t.Errorf("expected second group Older, got %s", groups[1].Label)
 	}
 }
+
+func TestGroupSessionsByTime_GroupSummaryPopulated(t *testing.T) {
+	now := time.Now()
+	sessions := []adapter.Session{
+		{ID: "1", UpdatedAt: now, TotalTokens: 1000, EstCost: 0.50},
+		{ID: "2", UpdatedAt: now, TotalTokens: 2000, EstCost: 1.00},
+		{ID: "3", UpdatedAt: now.AddDate(0, 0, -1), TotalTokens: 500, EstCost: 0.25},
+	}
+
+	groups := GroupSessionsByTime(sessions)
+
+	if len(groups) != 2 {
+		t.Fatalf("expected 2 groups, got %d", len(groups))
+	}
+
+	// Today group should have 2 sessions with aggregated tokens/cost
+	today := groups[0]
+	if today.Label != "Today" {
+		t.Errorf("expected Today, got %s", today.Label)
+	}
+	if today.Summary.SessionCount != 2 {
+		t.Errorf("expected 2 sessions, got %d", today.Summary.SessionCount)
+	}
+	if today.Summary.TotalTokens != 3000 {
+		t.Errorf("expected 3000 tokens, got %d", today.Summary.TotalTokens)
+	}
+	if today.Summary.TotalCost < 1.49 || today.Summary.TotalCost > 1.51 {
+		t.Errorf("expected cost ~1.50, got %f", today.Summary.TotalCost)
+	}
+
+	// Yesterday group should have 1 session
+	yesterday := groups[1]
+	if yesterday.Label != "Yesterday" {
+		t.Errorf("expected Yesterday, got %s", yesterday.Label)
+	}
+	if yesterday.Summary.SessionCount != 1 {
+		t.Errorf("expected 1 session, got %d", yesterday.Summary.SessionCount)
+	}
+	if yesterday.Summary.TotalTokens != 500 {
+		t.Errorf("expected 500 tokens, got %d", yesterday.Summary.TotalTokens)
+	}
+	if yesterday.Summary.TotalCost < 0.24 || yesterday.Summary.TotalCost > 0.26 {
+		t.Errorf("expected cost ~0.25, got %f", yesterday.Summary.TotalCost)
+	}
+}

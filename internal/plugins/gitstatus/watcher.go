@@ -57,7 +57,7 @@ func (w *Watcher) Events() <-chan struct{} {
 	return w.events
 }
 
-// Stop stops the watcher and closes the events channel.
+// Stop stops the watcher. The events channel is closed when run() exits.
 func (w *Watcher) Stop() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -69,11 +69,14 @@ func (w *Watcher) Stop() {
 
 	close(w.stop)
 	w.fsWatcher.Close()
-	close(w.events) // Close events channel so listeners unblock
+	// Note: w.events is closed by run() goroutine on exit, not here
+	// Closing here would race with run()'s debounce timer sending to the channel
 }
 
 // run processes file system events.
 func (w *Watcher) run() {
+	defer close(w.events) // Close channel when goroutine exits
+
 	// Debounce timer
 	var debounceTimer *time.Timer
 	debounceDelay := 100 * time.Millisecond

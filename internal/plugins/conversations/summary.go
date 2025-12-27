@@ -144,6 +144,8 @@ func GroupSessionsByTime(sessions []adapter.Session) []SessionGroup {
 		}
 		group.Sessions = append(group.Sessions, s)
 		group.Summary.SessionCount++
+		group.Summary.TotalTokens += s.TotalTokens
+		group.Summary.TotalCost += s.EstCost
 	}
 
 	// Build result in order, skip empty groups
