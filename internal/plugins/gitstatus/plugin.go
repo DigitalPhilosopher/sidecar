@@ -82,6 +82,11 @@ type Plugin struct {
 	commitDetailCursor int
 	commitDetailScroll int
 
+	// Push status state
+	pushStatus     *PushStatus
+	pushInProgress bool
+	pushError      string
+
 	// External tool integration
 	externalTool *ExternalTool
 
@@ -211,6 +216,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case HistoryLoadedMsg:
 		p.commits = msg.Commits
+		p.pushStatus = msg.PushStatus
 		return p, nil
 
 	case CommitDetailLoadedMsg:
@@ -241,6 +247,18 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case RecentCommitsLoadedMsg:
 		p.recentCommits = msg.Commits
+		p.pushStatus = msg.PushStatus
+		return p, nil
+
+	case PushSuccessMsg:
+		p.pushInProgress = false
+		p.pushError = ""
+		// Refresh to show updated push status
+		return p, tea.Batch(p.refresh(), p.loadRecentCommits())
+
+	case PushErrorMsg:
+		p.pushInProgress = false
+		p.pushError = msg.Err.Error()
 		return p, nil
 
 	case tea.WindowSizeMsg:
@@ -357,6 +375,7 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p, p.loadHistory()
 
 	case "r":
+		p.pushError = "" // Clear any stale push error
 		return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 
 	case "S":
@@ -371,6 +390,14 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.viewMode = ViewModeCommit
 			p.initCommitTextarea()
 			return p, nil
+		}
+
+	case "P":
+		// Push to remote (following lazygit convention)
+		if p.canPush() && !p.pushInProgress {
+			p.pushInProgress = true
+			p.pushError = ""
+			return p, p.doPush(false)
 		}
 	}
 
@@ -553,6 +580,14 @@ func (p *Plugin) updateHistory(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.commitDetailScroll = 0
 			return p, p.loadCommitDetail(commit.Hash)
 		}
+
+	case "P":
+		// Push to remote from history view
+		if p.canPush() && !p.pushInProgress {
+			p.pushInProgress = true
+			p.pushError = ""
+			return p, p.doPush(false)
+		}
 	}
 
 	return p, nil
@@ -727,11 +762,13 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "unstage-file", Name: "Unstage", Context: "git-status"},
 		{ID: "stage-all", Name: "Stage all", Context: "git-status"},
 		{ID: "commit", Name: "Commit", Context: "git-status"},
+		{ID: "push", Name: "Push", Context: "git-status"},
 		{ID: "show-diff", Name: "Diff", Context: "git-status"},
 		{ID: "show-history", Name: "History", Context: "git-status"},
 		{ID: "open-file", Name: "Open", Context: "git-status"},
 		{ID: "back", Name: "Back", Context: "git-history"},
 		{ID: "view-commit", Name: "View", Context: "git-history"},
+		{ID: "push", Name: "Push", Context: "git-history"},
 		{ID: "back", Name: "Back", Context: "git-commit-detail"},
 		{ID: "view-diff", Name: "Diff", Context: "git-commit-detail"},
 		{ID: "close-diff", Name: "Close", Context: "git-diff"},
@@ -888,7 +925,8 @@ type OpenFileMsg struct {
 	Path   string
 }
 type HistoryLoadedMsg struct {
-	Commits []*Commit
+	Commits    []*Commit
+	PushStatus *PushStatus
 }
 type CommitDetailLoadedMsg struct {
 	Commit *Commit
@@ -910,17 +948,34 @@ type InlineDiffLoadedMsg struct {
 
 // RecentCommitsLoadedMsg is sent when recent commits are loaded for sidebar.
 type RecentCommitsLoadedMsg struct {
-	Commits []*Commit
+	Commits    []*Commit
+	PushStatus *PushStatus
 }
 
-// loadHistory loads commit history.
+// PushSuccessMsg is sent when a push completes successfully.
+type PushSuccessMsg struct {
+	Output string
+}
+
+// PushErrorMsg is sent when a push fails.
+type PushErrorMsg struct {
+	Err error
+}
+
+// PushStatusLoadedMsg is sent when push status is loaded.
+type PushStatusLoadedMsg struct {
+	Status *PushStatus
+}
+
+// loadHistory loads commit history with push status.
 func (p *Plugin) loadHistory() tea.Cmd {
+	workDir := p.ctx.WorkDir
 	return func() tea.Msg {
-		commits, err := GetCommitHistory(p.ctx.WorkDir, 50)
+		commits, pushStatus, err := GetCommitHistoryWithPushStatus(workDir, 50)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
-		return HistoryLoadedMsg{Commits: commits}
+		return HistoryLoadedMsg{Commits: commits, PushStatus: pushStatus}
 	}
 }
 
@@ -945,15 +1000,15 @@ func (p *Plugin) loadInlineDiff(path string, staged bool, status FileStatus) tea
 	}
 }
 
-// loadRecentCommits loads recent commits for the sidebar.
+// loadRecentCommits loads recent commits for the sidebar with push status.
 func (p *Plugin) loadRecentCommits() tea.Cmd {
 	workDir := p.ctx.WorkDir
 	return func() tea.Msg {
-		commits, err := GetCommitHistory(workDir, 8)
+		commits, pushStatus, err := GetCommitHistoryWithPushStatus(workDir, 8)
 		if err != nil {
-			return RecentCommitsLoadedMsg{Commits: nil}
+			return RecentCommitsLoadedMsg{Commits: nil, PushStatus: nil}
 		}
-		return RecentCommitsLoadedMsg{Commits: commits}
+		return RecentCommitsLoadedMsg{Commits: commits, PushStatus: pushStatus}
 	}
 }
 
@@ -1074,4 +1129,21 @@ func (p *Plugin) doCommit(message string) tea.Cmd {
 		subject := strings.Split(message, "\n")[0]
 		return CommitSuccessMsg{Hash: hash, Subject: subject}
 	}
+}
+
+// doPush executes a git push asynchronously.
+func (p *Plugin) doPush(force bool) tea.Cmd {
+	workDir := p.ctx.WorkDir
+	return func() tea.Msg {
+		output, err := ExecutePush(workDir, force)
+		if err != nil {
+			return PushErrorMsg{Err: err}
+		}
+		return PushSuccessMsg{Output: output}
+	}
+}
+
+// canPush returns true if there are commits that can be pushed.
+func (p *Plugin) canPush() bool {
+	return p.pushStatus != nil && p.pushStatus.CanPush()
 }

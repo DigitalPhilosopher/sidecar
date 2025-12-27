@@ -11,8 +11,14 @@ import (
 func (p *Plugin) renderHistory() string {
 	var sb strings.Builder
 
-	// Header
+	// Header with push status
 	header := " Commit History"
+	if p.pushStatus != nil {
+		status := p.pushStatus.FormatAheadBehind()
+		if status != "" {
+			header = fmt.Sprintf(" Commit History  %s", styles.StatusModified.Render(status))
+		}
+	}
 	sb.WriteString(styles.PanelHeader.Render(header))
 	sb.WriteString("\n")
 	sb.WriteString(styles.Muted.Render(strings.Repeat("━", p.width-2)))
@@ -59,11 +65,19 @@ func (p *Plugin) renderCommitLine(c *Commit, selected bool) string {
 		cursor = styles.ListCursor.Render("> ")
 	}
 
+	// Push status indicator
+	var pushIndicator string
+	if !c.Pushed {
+		pushIndicator = styles.StatusModified.Render("↑") + " "
+	} else {
+		pushIndicator = "  " // Two spaces for alignment
+	}
+
 	// Hash
 	hash := styles.Code.Render(c.ShortHash)
 
 	// Subject (truncate if needed)
-	maxSubjectWidth := p.width - 30 // Reserve space for hash, time, etc.
+	maxSubjectWidth := p.width - 34 // Reserve space for hash, time, indicator
 	subject := c.Subject
 	if len(subject) > maxSubjectWidth && maxSubjectWidth > 3 {
 		subject = subject[:maxSubjectWidth-3] + "..."
@@ -78,7 +92,7 @@ func (p *Plugin) renderCommitLine(c *Commit, selected bool) string {
 		lineStyle = styles.ListItemSelected
 	}
 
-	return lineStyle.Render(fmt.Sprintf("%s%s %s  %s", cursor, hash, subject, timeStr))
+	return lineStyle.Render(fmt.Sprintf("%s%s%s %s  %s", cursor, pushIndicator, hash, subject, timeStr))
 }
 
 // renderCommitDetail renders the commit detail view.

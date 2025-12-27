@@ -168,7 +168,7 @@ func (p *Plugin) FocusContext() string {
 	}
 
 	// Check if modal is open
-	if p.model.ModalOpen || p.model.StatsOpen || p.model.ConfirmOpen {
+	if p.model.ModalOpen() || p.model.StatsOpen || p.model.ConfirmOpen {
 		return "td-modal"
 	}
 

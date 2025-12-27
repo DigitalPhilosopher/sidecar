@@ -9,15 +9,16 @@ import (
 
 // Commit represents a git commit.
 type Commit struct {
-	Hash       string
-	ShortHash  string
-	Author     string
+	Hash        string
+	ShortHash   string
+	Author      string
 	AuthorEmail string
-	Date       time.Time
-	Subject    string
-	Body       string
-	Files      []CommitFile
-	Stats      CommitStats
+	Date        time.Time
+	Subject     string
+	Body        string
+	Files       []CommitFile
+	Stats       CommitStats
+	Pushed      bool // Whether this commit has been pushed to upstream
 }
 
 // CommitFile represents a file changed in a commit.
@@ -194,6 +195,30 @@ func GetCommitFullDiff(workDir, hash string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// PopulatePushStatus updates the Pushed field for a list of commits
+// based on the provided push status.
+func PopulatePushStatus(commits []*Commit, pushStatus *PushStatus) {
+	if pushStatus == nil {
+		return
+	}
+	for _, c := range commits {
+		c.Pushed = pushStatus.IsCommitPushed(c.Hash)
+	}
+}
+
+// GetCommitHistoryWithPushStatus fetches commits and populates push status.
+func GetCommitHistoryWithPushStatus(workDir string, limit int) ([]*Commit, *PushStatus, error) {
+	commits, err := GetCommitHistory(workDir, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pushStatus, _ := GetPushStatus(workDir)
+	PopulatePushStatus(commits, pushStatus)
+
+	return commits, pushStatus, nil
 }
 
 // RelativeTime returns a human-readable relative time string.

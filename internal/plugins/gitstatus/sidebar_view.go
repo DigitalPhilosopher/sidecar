@@ -141,6 +141,21 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.sidebarWidth-4)))
 	sb.WriteString("\n")
 
+	// Push status/error message
+	if p.pushInProgress {
+		sb.WriteString(styles.StatusInProgress.Render("Pushing..."))
+		sb.WriteString("\n")
+	} else if p.pushError != "" {
+		// Truncate error if too long
+		errMsg := p.pushError
+		maxLen := p.sidebarWidth - 6
+		if len(errMsg) > maxLen && maxLen > 3 {
+			errMsg = errMsg[:maxLen-3] + "..."
+		}
+		sb.WriteString(styles.StatusDeleted.Render("✗ " + errMsg))
+		sb.WriteString("\n")
+	}
+
 	// Recent commits section
 	sb.WriteString(p.renderRecentCommits())
 
@@ -229,7 +244,15 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 func (p *Plugin) renderRecentCommits() string {
 	var sb strings.Builder
 
-	sb.WriteString(styles.Subtitle.Render("Recent Commits"))
+	// Section header with push status
+	header := "Recent Commits"
+	if p.pushStatus != nil {
+		status := p.pushStatus.FormatAheadBehind()
+		if status != "" {
+			header = fmt.Sprintf("Recent Commits %s", styles.StatusModified.Render(status))
+		}
+	}
+	sb.WriteString(styles.Subtitle.Render(header))
 	sb.WriteString("\n")
 
 	if len(p.recentCommits) == 0 {
@@ -246,15 +269,23 @@ func (p *Plugin) renderRecentCommits() string {
 	for i := 0; i < maxCommits; i++ {
 		commit := p.recentCommits[i]
 
-		// Format: "abc1234 commit message..."
+		// Push indicator: ↑ for unpushed, nothing for pushed
+		var indicator string
+		if !commit.Pushed {
+			indicator = styles.StatusModified.Render("↑") + " "
+		} else {
+			indicator = "  " // Two spaces to align with indicator
+		}
+
+		// Format: "↑ abc1234 commit message..."
 		hash := styles.Code.Render(commit.Hash[:7])
-		msgWidth := maxWidth - 8 // hash + space
+		msgWidth := maxWidth - 10 // indicator + hash + space
 		msg := commit.Subject
 		if len(msg) > msgWidth && msgWidth > 3 {
 			msg = msg[:msgWidth-1] + "…"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s %s", hash, styles.Muted.Render(msg)))
+		sb.WriteString(fmt.Sprintf("%s%s %s", indicator, hash, styles.Muted.Render(msg)))
 		if i < maxCommits-1 {
 			sb.WriteString("\n")
 		}
