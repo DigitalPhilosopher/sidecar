@@ -407,7 +407,7 @@ func (p *Plugin) renderMessage(msg adapter.Message, msgIndex int, maxWidth int) 
 
 	// Thinking blocks (collapsed by default)
 	if len(msg.ThinkingBlocks) > 0 {
-		expanded := p.expandedThinking[msgIndex]
+		expanded := p.expandedThinking[msg.ID]
 		for _, tb := range msg.ThinkingBlocks {
 			if expanded {
 				// Show expanded thinking block

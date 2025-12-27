@@ -795,11 +795,14 @@ func (p *Plugin) startWatcher() tea.Cmd {
 
 // listenForWatchEvents waits for the next file system event.
 func (p *Plugin) listenForWatchEvents() tea.Cmd {
-	if p.watcher == nil {
+	// Capture watcher reference to avoid race with Stop()
+	w := p.watcher
+	if w == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		<-p.watcher.Events()
+		// When watcher is stopped, Events() channel is closed and this returns
+		<-w.Events()
 		return WatchEventMsg{}
 	}
 }

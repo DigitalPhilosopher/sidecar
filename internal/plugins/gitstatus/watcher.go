@@ -57,7 +57,7 @@ func (w *Watcher) Events() <-chan struct{} {
 	return w.events
 }
 
-// Stop stops the watcher.
+// Stop stops the watcher and closes the events channel.
 func (w *Watcher) Stop() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -69,6 +69,7 @@ func (w *Watcher) Stop() {
 
 	close(w.stop)
 	w.fsWatcher.Close()
+	close(w.events) // Close events channel so listeners unblock
 }
 
 // run processes file system events.

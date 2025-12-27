@@ -9,26 +9,24 @@ import (
 	"github.com/sst/sidecar/internal/styles"
 )
 
-// renderAnalytics renders the global analytics view.
+// renderAnalytics renders the global analytics view with scrolling support.
 func (p *Plugin) renderAnalytics() string {
-	var sb strings.Builder
+	// Build all content lines first
+	var lines []string
 
 	// Load stats
 	stats, err := claudecode.LoadStatsCache()
 	if err != nil {
-		sb.WriteString(styles.PanelHeader.Render(" Usage Analytics"))
-		sb.WriteString("\n")
-		sb.WriteString(styles.Muted.Render(strings.Repeat("━", p.width-2)))
-		sb.WriteString("\n")
-		sb.WriteString(styles.Muted.Render(" Unable to load stats: " + err.Error()))
-		return sb.String()
+		lines = append(lines, styles.PanelHeader.Render(" Usage Analytics"))
+		lines = append(lines, styles.Muted.Render(strings.Repeat("━", p.width-2)))
+		lines = append(lines, styles.Muted.Render(" Unable to load stats: "+err.Error()))
+		p.analyticsLines = lines
+		return strings.Join(lines, "\n")
 	}
 
 	// Header
-	sb.WriteString(styles.PanelHeader.Render(" Usage Analytics                                    [U to close]"))
-	sb.WriteString("\n")
-	sb.WriteString(styles.Muted.Render(strings.Repeat("━", p.width-2)))
-	sb.WriteString("\n")
+	lines = append(lines, styles.PanelHeader.Render(" Usage Analytics                                    [U to close]"))
+	lines = append(lines, styles.Muted.Render(strings.Repeat("━", p.width-2)))
 
 	// Summary line
 	firstDate := stats.FirstSessionDate.Format("Jan 2")
@@ -36,14 +34,12 @@ func (p *Plugin) renderAnalytics() string {
 		firstDate,
 		stats.TotalSessions,
 		formatLargeNumber(stats.TotalMessages))
-	sb.WriteString(styles.Body.Render(summary))
-	sb.WriteString("\n\n")
+	lines = append(lines, styles.Body.Render(summary))
+	lines = append(lines, "")
 
 	// Weekly activity chart
-	sb.WriteString(styles.PanelHeader.Render(" This Week's Activity"))
-	sb.WriteString("\n")
-	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.width-2)))
-	sb.WriteString("\n")
+	lines = append(lines, styles.PanelHeader.Render(" This Week's Activity"))
+	lines = append(lines, styles.Muted.Render(strings.Repeat("─", p.width-2)))
 
 	recentActivity := stats.GetRecentActivity(7)
 	maxMsgs := 0
@@ -62,16 +58,13 @@ func (p *Plugin) renderAnalytics() string {
 			bar,
 			day.MessageCount,
 			day.SessionCount)
-		sb.WriteString(styles.Muted.Render(line))
-		sb.WriteString("\n")
+		lines = append(lines, styles.Muted.Render(line))
 	}
-	sb.WriteString("\n")
+	lines = append(lines, "")
 
 	// Model usage
-	sb.WriteString(styles.PanelHeader.Render(" Model Usage"))
-	sb.WriteString("\n")
-	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.width-2)))
-	sb.WriteString("\n")
+	lines = append(lines, styles.PanelHeader.Render(" Model Usage"))
+	lines = append(lines, styles.Muted.Render(strings.Repeat("─", p.width-2)))
 
 	// Find max tokens for bar scaling
 	var maxTokens int64
@@ -98,15 +91,13 @@ func (p *Plugin) renderAnalytics() string {
 			formatLargeNumber64(int64(usage.InputTokens)),
 			formatLargeNumber64(int64(usage.OutputTokens)),
 			cost)
-		sb.WriteString(styles.Muted.Render(line))
-		sb.WriteString("\n")
+		lines = append(lines, styles.Muted.Render(line))
 	}
-	sb.WriteString("\n")
+	lines = append(lines, "")
 
 	// Stats footer
 	cacheEff := stats.CacheEfficiency()
-	sb.WriteString(styles.Muted.Render(fmt.Sprintf(" Cache Efficiency: %.0f%%", cacheEff)))
-	sb.WriteString("\n")
+	lines = append(lines, styles.Muted.Render(fmt.Sprintf(" Cache Efficiency: %.0f%%", cacheEff)))
 
 	// Peak hours
 	peakHours := stats.GetPeakHours(3)
@@ -118,23 +109,42 @@ func (p *Plugin) renderAnalytics() string {
 			}
 			peakStr += fmt.Sprintf(" %s:00", ph.Hour)
 		}
-		sb.WriteString(styles.Muted.Render(peakStr))
-		sb.WriteString("\n")
+		lines = append(lines, styles.Muted.Render(peakStr))
 	}
 
 	// Longest session
 	if stats.LongestSession.Duration > 0 {
 		dur := time.Duration(stats.LongestSession.Duration) * time.Millisecond
-		sb.WriteString(styles.Muted.Render(fmt.Sprintf(" Longest Session: %s", formatSessionDuration(dur))))
-		sb.WriteString("\n")
+		lines = append(lines, styles.Muted.Render(fmt.Sprintf(" Longest Session: %s", formatSessionDuration(dur))))
 	}
 
 	// Total cost
 	totalCost := stats.TotalCost()
-	sb.WriteString(styles.Muted.Render(fmt.Sprintf(" Total Estimated Cost: ~$%.0f", totalCost)))
-	sb.WriteString("\n")
+	lines = append(lines, styles.Muted.Render(fmt.Sprintf(" Total Estimated Cost: ~$%.0f", totalCost)))
 
-	return sb.String()
+	// Store lines for scroll calculation
+	p.analyticsLines = lines
+
+	// Apply scroll offset and height constraint
+	contentHeight := p.height - 2 // leave room for potential padding
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	start := p.analyticsScrollOff
+	if start >= len(lines) {
+		start = len(lines) - 1
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + contentHeight
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	visibleLines := lines[start:end]
+	return strings.Join(visibleLines, "\n")
 }
 
 // renderBar renders an ASCII bar chart segment.

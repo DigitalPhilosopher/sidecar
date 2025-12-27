@@ -51,9 +51,13 @@ type Plugin struct {
 	msgScrollOff     int
 	pageSize         int
 	hasMore          bool
-	expandedThinking map[int]bool   // message index -> thinking expanded
+	expandedThinking map[string]bool // message ID -> thinking expanded
 	sessionSummary   *SessionSummary // computed summary for current session
 	showToolSummary  bool            // toggle for tool impact view
+
+	// Analytics view state
+	analyticsScrollOff int
+	analyticsLines     []string // pre-rendered lines for scrolling
 
 	// View dimensions
 	width  int
@@ -72,7 +76,7 @@ type Plugin struct {
 func New() *Plugin {
 	return &Plugin{
 		pageSize:         defaultPageSize,
-		expandedThinking: make(map[int]bool),
+		expandedThinking: make(map[string]bool),
 	}
 }
 
@@ -320,9 +324,44 @@ func (p *Plugin) visibleSessions() []adapter.Session {
 
 // updateAnalytics handles key events in analytics view.
 func (p *Plugin) updateAnalytics(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	// Calculate max scroll based on content
+	maxScroll := len(p.analyticsLines) - (p.height - 2)
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
 	switch msg.String() {
 	case "esc", "q", "U":
 		p.view = ViewSessions
+		p.analyticsScrollOff = 0
+
+	case "j", "down":
+		if p.analyticsScrollOff < maxScroll {
+			p.analyticsScrollOff++
+		}
+
+	case "k", "up":
+		if p.analyticsScrollOff > 0 {
+			p.analyticsScrollOff--
+		}
+
+	case "g":
+		p.analyticsScrollOff = 0
+
+	case "G":
+		p.analyticsScrollOff = maxScroll
+
+	case "ctrl+d":
+		p.analyticsScrollOff += 10
+		if p.analyticsScrollOff > maxScroll {
+			p.analyticsScrollOff = maxScroll
+		}
+
+	case "ctrl+u":
+		p.analyticsScrollOff -= 10
+		if p.analyticsScrollOff < 0 {
+			p.analyticsScrollOff = 0
+		}
 	}
 	return p, nil
 }
@@ -334,7 +373,7 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.view = ViewSessions
 		p.messages = nil
 		p.selectedSession = ""
-		p.expandedThinking = make(map[int]bool) // reset thinking state
+		p.expandedThinking = make(map[string]bool) // reset thinking state
 		p.sessionSummary = nil
 		p.showToolSummary = false
 
@@ -363,7 +402,8 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "T":
 		// Toggle thinking block expansion for current message
 		if p.msgCursor < len(p.messages) && len(p.messages[p.msgCursor].ThinkingBlocks) > 0 {
-			p.expandedThinking[p.msgCursor] = !p.expandedThinking[p.msgCursor]
+			msgID := p.messages[p.msgCursor].ID
+			p.expandedThinking[msgID] = !p.expandedThinking[msgID]
 		}
 
 	case "t":
