@@ -23,6 +23,14 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	// Show warning if terminal is too small
+	if m.width < minWidth || m.height < minHeight {
+		msg := fmt.Sprintf("Terminal too small (%dx%d)\nMinimum: %dx%d",
+			m.width, m.height, minWidth, minHeight)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center,
+			styles.StatusBlocked.Render(msg))
+	}
+
 	// Calculate content area
 	contentHeight := m.height - headerHeight
 	if m.showFooter {
