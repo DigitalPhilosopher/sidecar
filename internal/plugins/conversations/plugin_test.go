@@ -954,3 +954,219 @@ func TestUpdateSearchEmptyResults(t *testing.T) {
 		t.Error("expected to stay in sessions view with empty results")
 	}
 }
+
+// =============================================================================
+// Thinking Block Toggle Persistence Tests
+// =============================================================================
+
+// TestThinkingBlockTogglePersistence tests that thinking block expansion
+// persists when scrolling away and back to a message.
+func TestThinkingBlockTogglePersistence(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.view = ViewMessages
+	p.height = 20
+
+	// Create messages with thinking blocks
+	p.messages = []adapter.Message{
+		{
+			ID:   "msg-1",
+			Role: "assistant",
+			ThinkingBlocks: []adapter.ThinkingBlock{
+				{Content: "thinking 1"},
+			},
+		},
+		{
+			ID:   "msg-2",
+			Role: "assistant",
+			ThinkingBlocks: []adapter.ThinkingBlock{
+				{Content: "thinking 2"},
+			},
+		},
+		{
+			ID:   "msg-3",
+			Role: "assistant",
+			ThinkingBlocks: []adapter.ThinkingBlock{
+				{Content: "thinking 3"},
+			},
+		},
+	}
+	p.msgCursor = 0
+
+	// Initially all thinking blocks should be collapsed
+	if p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 thinking to be collapsed initially")
+	}
+
+	// Toggle msg-1 thinking block (press 'T')
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'T'}}
+	_, _ = p.Update(msg)
+
+	if !p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 thinking to be expanded after toggle")
+	}
+
+	// Scroll to msg-2
+	p.msgCursor = 1
+
+	// Toggle msg-2 thinking block
+	_, _ = p.Update(msg)
+
+	if !p.expandedThinking["msg-2"] {
+		t.Error("expected msg-2 thinking to be expanded after toggle")
+	}
+
+	// Verify msg-1 is still expanded
+	if !p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 thinking to remain expanded after scrolling")
+	}
+
+	// Scroll back to msg-1 and verify still expanded
+	p.msgCursor = 0
+	if !p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 thinking to remain expanded after scrolling back")
+	}
+
+	// Toggle msg-1 again to collapse
+	_, _ = p.Update(msg)
+
+	if p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 thinking to be collapsed after second toggle")
+	}
+
+	// msg-2 should still be expanded
+	if !p.expandedThinking["msg-2"] {
+		t.Error("expected msg-2 thinking to remain expanded")
+	}
+}
+
+// TestThinkingBlockToggleNoThinkingBlocks tests toggle on message without thinking blocks.
+func TestThinkingBlockToggleNoThinkingBlocks(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.view = ViewMessages
+	p.height = 20
+
+	// Create message without thinking blocks
+	p.messages = []adapter.Message{
+		{
+			ID:   "msg-1",
+			Role: "user",
+		},
+	}
+	p.msgCursor = 0
+
+	// Try to toggle (should do nothing)
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'T'}}
+	_, _ = p.Update(msg)
+
+	// Map should remain empty
+	if len(p.expandedThinking) != 0 {
+		t.Errorf("expected empty expandedThinking map, got %d entries", len(p.expandedThinking))
+	}
+}
+
+// TestThinkingBlockResetOnSessionChange tests that expanded state resets when changing sessions.
+func TestThinkingBlockResetOnSessionChange(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.view = ViewMessages
+	p.height = 20
+	p.selectedSession = "session-1"
+
+	// Create message with thinking block and expand it
+	p.messages = []adapter.Message{
+		{
+			ID:   "msg-1",
+			Role: "assistant",
+			ThinkingBlocks: []adapter.ThinkingBlock{
+				{Content: "thinking"},
+			},
+		},
+	}
+	p.msgCursor = 0
+
+	// Toggle to expand
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'T'}}
+	_, _ = p.Update(msg)
+
+	if !p.expandedThinking["msg-1"] {
+		t.Fatal("expected msg-1 thinking to be expanded")
+	}
+
+	// Go back to sessions view (press 'esc' or 'q')
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	_, _ = p.Update(escMsg)
+
+	// Verify state was reset
+	if p.view != ViewSessions {
+		t.Error("expected to be back in sessions view")
+	}
+	if len(p.expandedThinking) != 0 {
+		t.Errorf("expected expandedThinking to be reset, got %d entries", len(p.expandedThinking))
+	}
+}
+
+// TestThinkingBlockToggleMultipleIndependent tests independent toggle state for multiple messages.
+func TestThinkingBlockToggleMultipleIndependent(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.view = ViewMessages
+	p.height = 20
+
+	// Create 5 messages with thinking blocks
+	p.messages = []adapter.Message{
+		{ID: "msg-0", Role: "assistant", ThinkingBlocks: []adapter.ThinkingBlock{{Content: "t0"}}},
+		{ID: "msg-1", Role: "assistant", ThinkingBlocks: []adapter.ThinkingBlock{{Content: "t1"}}},
+		{ID: "msg-2", Role: "assistant", ThinkingBlocks: []adapter.ThinkingBlock{{Content: "t2"}}},
+		{ID: "msg-3", Role: "assistant", ThinkingBlocks: []adapter.ThinkingBlock{{Content: "t3"}}},
+		{ID: "msg-4", Role: "assistant", ThinkingBlocks: []adapter.ThinkingBlock{{Content: "t4"}}},
+	}
+
+	toggleMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'T'}}
+
+	// Expand messages 0, 2, 4 (skip 1, 3)
+	p.msgCursor = 0
+	_, _ = p.Update(toggleMsg)
+
+	p.msgCursor = 2
+	_, _ = p.Update(toggleMsg)
+
+	p.msgCursor = 4
+	_, _ = p.Update(toggleMsg)
+
+	// Verify even messages are expanded
+	if !p.expandedThinking["msg-0"] {
+		t.Error("expected msg-0 to be expanded")
+	}
+	if !p.expandedThinking["msg-2"] {
+		t.Error("expected msg-2 to be expanded")
+	}
+	if !p.expandedThinking["msg-4"] {
+		t.Error("expected msg-4 to be expanded")
+	}
+
+	// Verify odd messages are still collapsed
+	if p.expandedThinking["msg-1"] {
+		t.Error("expected msg-1 to remain collapsed")
+	}
+	if p.expandedThinking["msg-3"] {
+		t.Error("expected msg-3 to remain collapsed")
+	}
+
+	// Toggle msg-2 to collapse it
+	p.msgCursor = 2
+	_, _ = p.Update(toggleMsg)
+
+	if p.expandedThinking["msg-2"] {
+		t.Error("expected msg-2 to be collapsed after second toggle")
+	}
+
+	// Others should remain unchanged
+	if !p.expandedThinking["msg-0"] {
+		t.Error("expected msg-0 to still be expanded")
+	}
+	if !p.expandedThinking["msg-4"] {
+		t.Error("expected msg-4 to still be expanded")
+	}
+}
