@@ -61,6 +61,22 @@ func (t *FileTree) Build() error {
 	return nil
 }
 
+// isSystemFile returns true for OS-generated files that clutter file browsers.
+func isSystemFile(name string) bool {
+	// Exact matches
+	switch name {
+	case ".DS_Store", ".Spotlight-V100", ".Trashes", ".fseventsd",
+		".TemporaryItems", ".DocumentRevisions-V100",
+		"Thumbs.db", "desktop.ini", "$RECYCLE.BIN":
+		return true
+	}
+	// macOS resource fork files (._*)
+	if strings.HasPrefix(name, "._") {
+		return true
+	}
+	return false
+}
+
 // loadChildren populates a node's children from the filesystem.
 func (t *FileTree) loadChildren(node *FileNode) error {
 	fullPath := filepath.Join(t.RootDir, node.Path)
@@ -73,6 +89,10 @@ func (t *FileTree) loadChildren(node *FileNode) error {
 	node.Children = make([]*FileNode, 0, len(entries))
 
 	for _, entry := range entries {
+		if isSystemFile(entry.Name()) {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue // Skip files we can't stat
