@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	repoOwner = "marcus"
+	repoOwner = "sst"
 	repoName  = "sidecar"
 	apiURL    = "https://api.github.com/repos/%s/%s/releases/latest"
 )

@@ -65,16 +65,16 @@ func SaveCache(entry *CacheEntry) error {
 }
 
 // IsCacheValid checks if cache exists and is not expired.
-// Also invalidates if user has updated past the cached version.
+// Also invalidates if user version changed (upgrade or downgrade).
 func IsCacheValid(entry *CacheEntry, currentVersion string) bool {
 	if entry == nil {
 		return false
 	}
-	if time.Since(entry.CheckedAt) >= cacheTTL {
+	// Invalidate if current version changed (handles upgrade or downgrade)
+	if entry.CurrentVersion != currentVersion {
 		return false
 	}
-	// Invalidate if user updated past cached latest
-	if entry.HasUpdate && !isNewer(entry.LatestVersion, currentVersion) {
+	if time.Since(entry.CheckedAt) >= cacheTTL {
 		return false
 	}
 	return true

@@ -52,8 +52,8 @@ type GitContext struct {
 
 // ProjectRulesContext contains project rules.
 type ProjectRulesContext struct {
-	RootPath    string   `json:"root_path"`
-	ActiveRules []string `json:"active_rules"`
+	RootPath    string          `json:"root_path"`
+	ActiveRules json.RawMessage `json:"active_rules"` // Complex nested structure, not parsed
 }
 
 // CurrentTimeContext contains the timestamp.

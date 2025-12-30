@@ -39,6 +39,10 @@ sidecar --debug
 sidecar --version
 ```
 
+## Updates
+
+Sidecar checks for updates on startup. When a new version is available, a toast notification appears. Press `!` to open the diagnostics modal and see the update command.
+
 ## Plugins
 
 ### Git Status

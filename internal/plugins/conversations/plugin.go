@@ -856,40 +856,40 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 func (p *Plugin) Commands() []plugin.Command {
 	if p.searchMode {
 		return []plugin.Command{
-			{ID: "select", Name: "Select", Description: "Select search result", Category: plugin.CategoryActions, Context: "conversations-search"},
-			{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "conversations-search"},
+			{ID: "select", Name: "Select", Description: "Select search result", Category: plugin.CategoryActions, Context: "conversations-search", Priority: 1},
+			{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "conversations-search", Priority: 1},
 		}
 	}
 	if p.filterMode {
 		return []plugin.Command{
-			{ID: "select", Name: "Select", Description: "Apply filter", Category: plugin.CategoryActions, Context: "conversations-filter"},
-			{ID: "cancel", Name: "Cancel", Description: "Cancel filter", Category: plugin.CategoryActions, Context: "conversations-filter"},
+			{ID: "select", Name: "Select", Description: "Apply filter", Category: plugin.CategoryActions, Context: "conversations-filter", Priority: 1},
+			{ID: "cancel", Name: "Cancel", Description: "Cancel filter", Category: plugin.CategoryActions, Context: "conversations-filter", Priority: 1},
 		}
 	}
 	if p.view == ViewMessageDetail {
 		return []plugin.Command{
-			{ID: "back", Name: "Back", Description: "Return to messages", Category: plugin.CategoryNavigation, Context: "message-detail"},
-			{ID: "scroll", Name: "Scroll", Description: "Scroll message", Category: plugin.CategoryNavigation, Context: "message-detail"},
+			{ID: "back", Name: "Back", Description: "Return to messages", Category: plugin.CategoryNavigation, Context: "message-detail", Priority: 1},
+			{ID: "scroll", Name: "Scroll", Description: "Scroll message", Category: plugin.CategoryNavigation, Context: "message-detail", Priority: 2},
 		}
 	}
 	if p.view == ViewMessages || (p.twoPane && p.activePane == PaneMessages) {
 		return []plugin.Command{
-			{ID: "back", Name: "Back", Description: "Return to session list", Category: plugin.CategoryNavigation, Context: "conversation-detail"},
-			{ID: "copy", Name: "Copy", Description: "Copy message to clipboard", Category: plugin.CategoryActions, Context: "conversation-detail"},
-			{ID: "export", Name: "Export", Description: "Export conversation", Category: plugin.CategoryActions, Context: "conversation-detail"},
-			{ID: "detail", Name: "Detail", Description: "View message details", Category: plugin.CategoryView, Context: "conversation-detail"},
+			{ID: "back", Name: "Back", Description: "Return to session list", Category: plugin.CategoryNavigation, Context: "conversation-detail", Priority: 1},
+			{ID: "copy", Name: "Copy", Description: "Copy message to clipboard", Category: plugin.CategoryActions, Context: "conversation-detail", Priority: 2},
+			{ID: "detail", Name: "Detail", Description: "View message details", Category: plugin.CategoryView, Context: "conversation-detail", Priority: 2},
+			{ID: "export", Name: "Export", Description: "Export conversation", Category: plugin.CategoryActions, Context: "conversation-detail", Priority: 3},
 		}
 	}
 	if p.view == ViewAnalytics {
 		return []plugin.Command{
-			{ID: "back", Name: "Back", Description: "Return to conversations", Category: plugin.CategoryNavigation, Context: "analytics"},
+			{ID: "back", Name: "Back", Description: "Return to conversations", Category: plugin.CategoryNavigation, Context: "analytics", Priority: 1},
 		}
 	}
 	return []plugin.Command{
-		{ID: "view-session", Name: "View", Description: "View session messages", Category: plugin.CategoryView, Context: "conversations"},
-		{ID: "analytics", Name: "Stats", Description: "View usage analytics", Category: plugin.CategoryView, Context: "conversations"},
-		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations"},
-		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations"},
+		{ID: "view-session", Name: "View", Description: "View session messages", Category: plugin.CategoryView, Context: "conversations", Priority: 1},
+		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations", Priority: 2},
+		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations", Priority: 2},
+		{ID: "analytics", Name: "Stats", Description: "View usage analytics", Category: plugin.CategoryView, Context: "conversations", Priority: 3},
 	}
 }
 
@@ -1072,11 +1072,77 @@ func (p *Plugin) ensureCursorVisible() {
 		visibleRows = 1
 	}
 
-	if p.cursor < p.scrollOff {
-		p.scrollOff = p.cursor
-	} else if p.cursor >= p.scrollOff+visibleRows {
-		p.scrollOff = p.cursor - visibleRows + 1
+	sessions := p.visibleSessions()
+
+	// When not in search mode and we have sessions, account for group headers
+	if !p.searchMode && len(sessions) > 0 {
+		// Calculate visual lines between scrollOff and cursor (including headers)
+		headerLines := p.countHeaderLinesBetween(p.scrollOff, p.cursor)
+		visualOffset := (p.cursor - p.scrollOff) + headerLines
+
+		if p.cursor < p.scrollOff {
+			p.scrollOff = p.cursor
+		} else if visualOffset >= visibleRows {
+			// Need to scroll - find scrollOff that puts cursor at bottom
+			p.scrollOff = p.findScrollOffForCursor(p.cursor, visibleRows)
+		}
+	} else {
+		// Search mode or no sessions: flat list, no headers
+		if p.cursor < p.scrollOff {
+			p.scrollOff = p.cursor
+		} else if p.cursor >= p.scrollOff+visibleRows {
+			p.scrollOff = p.cursor - visibleRows + 1
+		}
 	}
+}
+
+// countHeaderLinesBetween counts header lines (group headers + spacers) between two session indices.
+func (p *Plugin) countHeaderLinesBetween(start, end int) int {
+	if start >= end {
+		return 0
+	}
+	sessions := p.visibleSessions()
+	if len(sessions) == 0 {
+		return 0
+	}
+
+	headerLines := 0
+	currentGroup := ""
+	if start > 0 && start < len(sessions) {
+		currentGroup = getSessionGroup(sessions[start].UpdatedAt)
+	}
+
+	for i := start; i <= end && i < len(sessions); i++ {
+		sessionGroup := getSessionGroup(sessions[i].UpdatedAt)
+		if sessionGroup != currentGroup {
+			// Group header line
+			headerLines++
+			// Spacer line for Yesterday/This Week (except first visible)
+			if currentGroup != "" && (sessionGroup == "Yesterday" || sessionGroup == "This Week") {
+				headerLines++
+			}
+			currentGroup = sessionGroup
+		}
+	}
+	return headerLines
+}
+
+// findScrollOffForCursor finds the scrollOff that puts cursor at the bottom of visible area.
+func (p *Plugin) findScrollOffForCursor(cursor, visibleRows int) int {
+	sessions := p.visibleSessions()
+	if len(sessions) == 0 {
+		return 0
+	}
+
+	// Binary search or iterate backwards to find best scrollOff
+	for scrollOff := cursor; scrollOff >= 0; scrollOff-- {
+		headerLines := p.countHeaderLinesBetween(scrollOff, cursor)
+		visualOffset := (cursor - scrollOff) + headerLines
+		if visualOffset < visibleRows {
+			return scrollOff
+		}
+	}
+	return 0
 }
 
 // ensureMsgCursorVisible adjusts scroll to keep message cursor visible.

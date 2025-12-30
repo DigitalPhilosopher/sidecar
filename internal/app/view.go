@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -210,10 +211,13 @@ type footerHint struct {
 }
 
 func (m Model) footerHints() []footerHint {
-	hints := m.globalFooterHints()
+	// Plugin-specific hints first - they're more contextually relevant
+	var hints []footerHint
 	if p := m.ActivePlugin(); p != nil {
-		hints = append(hints, m.pluginFooterHints(p, m.activeContext)...)
+		hints = m.pluginFooterHints(p, m.activeContext)
 	}
+	// Then essential global hints
+	hints = append(hints, m.globalFooterHints()...)
 	return hints
 }
 
@@ -221,11 +225,11 @@ func (m Model) globalFooterHints() []footerHint {
 	bindings := m.keymap.BindingsForContext("global")
 	keysByCmd := bindingKeysByCommand(bindings)
 
+	// Only essential global hints - plugin shortcuts are more relevant
 	specs := []struct {
 		id    string
 		label string
 	}{
-		{id: "next-plugin", label: "switch"},
 		{id: "toggle-palette", label: "help"},
 		{id: "quit", label: "quit"},
 	}
@@ -248,7 +252,14 @@ func (m Model) pluginFooterHints(p plugin.Plugin, context string) []footerHint {
 
 	keysByCmd := bindingKeysByCommand(m.keymap.BindingsForContext(context))
 
-	var hints []footerHint
+	// Collect commands with their priorities
+	type cmdWithPriority struct {
+		cmd      plugin.Command
+		keys     []string
+		priority int
+	}
+
+	var cmds []cmdWithPriority
 	for _, cmd := range p.Commands() {
 		if cmd.Context != context {
 			continue
@@ -257,9 +268,23 @@ func (m Model) pluginFooterHints(p plugin.Plugin, context string) []footerHint {
 		if len(keys) == 0 {
 			continue
 		}
+		priority := cmd.Priority
+		if priority == 0 {
+			priority = 99 // Default to low priority
+		}
+		cmds = append(cmds, cmdWithPriority{cmd, keys, priority})
+	}
+
+	// Sort by priority (lower = more important, shown first)
+	sort.Slice(cmds, func(i, j int) bool {
+		return cmds[i].priority < cmds[j].priority
+	})
+
+	var hints []footerHint
+	for _, c := range cmds {
 		hints = append(hints, footerHint{
-			keys:  formatBindingKeys(keys),
-			label: cmd.Name,
+			keys:  formatBindingKeys(c.keys),
+			label: c.cmd.Name,
 		})
 	}
 	return hints

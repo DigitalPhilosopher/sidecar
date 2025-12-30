@@ -238,6 +238,32 @@ func (p *Plugin) revealInFileManager(path string) tea.Cmd {
 	}
 }
 
+// validateDestPath checks that destination path is within workdir.
+// Returns error if path escapes the project directory.
+func (p *Plugin) validateDestPath(dstPath string) error {
+	// Clean and resolve the destination path
+	cleanDst := filepath.Clean(dstPath)
+
+	// Get absolute paths for comparison
+	absDst, err := filepath.Abs(cleanDst)
+	if err != nil {
+		return fmt.Errorf("invalid destination path")
+	}
+
+	absWorkDir, err := filepath.Abs(p.ctx.WorkDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve work directory")
+	}
+
+	// Check if destination is within workdir
+	relPath, err := filepath.Rel(absWorkDir, absDst)
+	if err != nil || strings.HasPrefix(relPath, "..") {
+		return fmt.Errorf("cannot move files outside project directory")
+	}
+
+	return nil
+}
+
 // executeFileOp performs the pending file operation.
 func (p *Plugin) executeFileOp() (plugin.Plugin, tea.Cmd) {
 	if p.fileOpTarget == nil || p.fileOpInput == "" {
@@ -251,14 +277,25 @@ func (p *Plugin) executeFileOp() (plugin.Plugin, tea.Cmd) {
 	switch p.fileOpMode {
 	case FileOpRename:
 		// Rename: new name in same directory
+		// Disallow path separators in rename (would be a move)
+		if strings.Contains(p.fileOpInput, string(filepath.Separator)) || strings.Contains(p.fileOpInput, "/") {
+			p.fileOpError = "use 'm' to move to a different directory"
+			return p, nil
+		}
 		dstPath = filepath.Join(filepath.Dir(srcPath), p.fileOpInput)
 	case FileOpMove:
-		// Move: full relative path from workdir
+		// Move: relative path from workdir only (no absolute paths)
 		if filepath.IsAbs(p.fileOpInput) {
-			dstPath = p.fileOpInput
-		} else {
-			dstPath = filepath.Join(p.ctx.WorkDir, p.fileOpInput)
+			p.fileOpError = "absolute paths not allowed"
+			return p, nil
 		}
+		dstPath = filepath.Join(p.ctx.WorkDir, p.fileOpInput)
+	}
+
+	// Validate destination is within project directory
+	if err := p.validateDestPath(dstPath); err != nil {
+		p.fileOpError = err.Error()
+		return p, nil
 	}
 
 	return p, p.doFileOp(srcPath, dstPath)
@@ -1244,28 +1281,28 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 func (p *Plugin) Commands() []plugin.Command {
 	return []plugin.Command{
 		// Tree pane commands
-		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree"},
-		{ID: "search", Name: "Search", Description: "Search for files", Category: plugin.CategorySearch, Context: "file-browser-tree"},
-		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree"},
-		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree"},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree"},
+		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 1},
+		{ID: "search", Name: "Search", Description: "Search for files", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
+		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 3},
+		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 3},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
 		// Preview pane commands
-		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview"},
-		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview"},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview"},
-		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview"},
+		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
+		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
+		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 2},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 3},
 		// Tree search commands
-		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-search"},
-		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-search"},
+		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-search", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-search", Priority: 1},
 		// Content search commands
-		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-content-search"},
-		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-content-search"},
+		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-content-search", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-content-search", Priority: 1},
 		// Quick open commands
-		{ID: "select", Name: "Open", Description: "Open selected file", Category: plugin.CategoryActions, Context: "file-browser-quick-open"},
-		{ID: "cancel", Name: "Cancel", Description: "Cancel quick open", Category: plugin.CategoryActions, Context: "file-browser-quick-open"},
+		{ID: "select", Name: "Open", Description: "Open selected file", Category: plugin.CategoryActions, Context: "file-browser-quick-open", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel quick open", Category: plugin.CategoryActions, Context: "file-browser-quick-open", Priority: 1},
 		// File operation commands (move/rename)
-		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op"},
-		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op"},
+		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 	}
 }
 

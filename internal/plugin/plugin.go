@@ -39,6 +39,7 @@ type Command struct {
 	Category    Category       // Logical grouping for palette display
 	Handler     func() tea.Cmd // Action to execute (optional)
 	Context     string         // Activation context
+	Priority    int            // Footer display priority: 1=highest, 0=default (treated as 99)
 }
 
 // DiagnosticProvider is implemented by plugins that expose diagnostics.

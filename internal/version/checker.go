@@ -40,13 +40,15 @@ func CheckAsync(currentVersion string) tea.Cmd {
 		// Cache miss or invalid, fetch from GitHub
 		result := Check(currentVersion)
 
-		// Save to cache (ignore errors)
-		_ = SaveCache(&CacheEntry{
-			LatestVersion:  result.LatestVersion,
-			CurrentVersion: currentVersion,
-			CheckedAt:      time.Now(),
-			HasUpdate:      result.HasUpdate,
-		})
+		// Only cache successful checks (don't cache network errors)
+		if result.Error == nil {
+			_ = SaveCache(&CacheEntry{
+				LatestVersion:  result.LatestVersion,
+				CurrentVersion: currentVersion,
+				CheckedAt:      time.Now(),
+				HasUpdate:      result.HasUpdate,
+			})
+		}
 
 		if result.HasUpdate {
 			return UpdateAvailableMsg{

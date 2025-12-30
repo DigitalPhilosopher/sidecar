@@ -32,15 +32,16 @@ func (l Layer) Name() string {
 
 // PaletteEntry represents a single searchable entry in the command palette.
 type PaletteEntry struct {
-	Key         string          // Display key(s): "s" or "ctrl+s"
-	CommandID   string          // Command ID
-	Name        string          // Short name
-	Description string          // Full description
-	Category    plugin.Category // Category for grouping
-	Context     string          // Source context
-	Layer       Layer           // Which layer: CurrentMode, Plugin, Global
-	Score       int             // Fuzzy match score (computed during search)
-	MatchRanges []MatchRange    // For highlighting matches in name
+	Key          string          // Display key(s): "s" or "ctrl+s"
+	CommandID    string          // Command ID
+	Name         string          // Short name
+	Description  string          // Full description
+	Category     plugin.Category // Category for grouping
+	Context      string          // Source context
+	Layer        Layer           // Which layer: CurrentMode, Plugin, Global
+	Score        int             // Fuzzy match score (computed during search)
+	MatchRanges  []MatchRange    // For highlighting matches in name
+	ContextCount int             // Number of contexts this command appears in (for grouped display)
 }
 
 // BuildEntries aggregates commands from keymap bindings and plugin commands.
@@ -197,4 +198,42 @@ func GroupEntriesByLayer(entries []PaletteEntry) map[Layer][]PaletteEntry {
 		groups[e.Layer] = append(groups[e.Layer], e)
 	}
 	return groups
+}
+
+// FilterEntriesForContext returns entries for a specific context + global only.
+// This eliminates duplicates since each command appears at most once per context.
+func FilterEntriesForContext(entries []PaletteEntry, activeContext string) []PaletteEntry {
+	var result []PaletteEntry
+	for _, e := range entries {
+		// Only include current context or global
+		if e.Context == activeContext || e.Context == "global" {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// GroupEntriesByCommand groups entries by CommandID and marks context count.
+// Returns one entry per command with ContextCount set for commands in multiple contexts.
+func GroupEntriesByCommand(entries []PaletteEntry) []PaletteEntry {
+	// Group by CommandID
+	groups := make(map[string][]PaletteEntry)
+	for _, e := range entries {
+		groups[e.CommandID] = append(groups[e.CommandID], e)
+	}
+
+	// Keep most relevant entry from each group, set context count
+	var result []PaletteEntry
+	for _, group := range groups {
+		// Sort group by layer (CurrentMode < Plugin < Global) to keep most relevant
+		entry := group[0]
+		for _, e := range group[1:] {
+			if e.Layer < entry.Layer {
+				entry = e
+			}
+		}
+		entry.ContextCount = len(group)
+		result = append(result, entry)
+	}
+	return result
 }

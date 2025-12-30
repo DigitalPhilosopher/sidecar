@@ -63,6 +63,14 @@ var (
 		Foreground(styles.TextMuted)
 )
 
+// renderItem represents a single line in the palette (header or entry).
+type renderItem struct {
+	isHeader   bool
+	layer      Layer
+	entry      *PaletteEntry
+	entryIndex int // index in filtered entries (for cursor matching)
+}
+
 // View renders the command palette.
 func (m Model) View() string {
 	var b strings.Builder
@@ -81,35 +89,61 @@ func (m Model) View() string {
 	header := paddedInput + " " + escText
 	b.WriteString(header)
 	b.WriteString("\n")
+
+	// Mode indicator
+	var modeText string
+	if m.showAllContexts {
+		modeText = "[All Contexts]"
+	} else {
+		modeText = fmt.Sprintf("[%s]", m.activeContext)
+	}
+	toggleHint := styles.Muted.Render("tab to toggle")
+	b.WriteString(fmt.Sprintf("%s  %s", styles.Muted.Render(modeText), toggleHint))
+	b.WriteString("\n")
 	b.WriteString(strings.Repeat("─", width))
 	b.WriteString("\n")
 
-	// Group entries by layer
-	groups := GroupEntriesByLayer(m.filtered)
+	// Build flat list of render items
+	items := m.buildRenderItems()
+	totalEntries := len(m.filtered)
 
-	// Render each layer
-	entryIndex := 0
-	layers := []Layer{LayerCurrentMode, LayerPlugin, LayerGlobal}
+	// Calculate visible range based on entry indices
+	visibleStart := m.offset
+	visibleEnd := m.offset + m.maxVisible
+	if visibleEnd > totalEntries {
+		visibleEnd = totalEntries
+	}
 
-	for _, layer := range layers {
-		entries, ok := groups[layer]
-		if !ok || len(entries) == 0 {
-			continue
-		}
-
-		// Layer header
-		header := m.renderLayerHeader(layer, len(entries))
-		b.WriteString(header)
+	// Show scroll-up indicator if content above
+	if m.offset > 0 {
+		b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↑ %d more above", m.offset)))
 		b.WriteString("\n")
+	}
 
-		// Render entries
-		for _, entry := range entries {
-			isSelected := entryIndex == m.cursor
-			line := m.renderEntry(entry, isSelected, width-4)
-			b.WriteString(line)
-			b.WriteString("\n")
-			entryIndex++
+	// Render only visible items
+	for _, item := range items {
+		if item.isHeader {
+			// Show header only if it has visible entries
+			if m.layerHasVisibleEntries(item.layer, visibleStart, visibleEnd) {
+				b.WriteString(m.renderLayerHeader(item.layer, m.countEntriesInLayer(item.layer)))
+				b.WriteString("\n")
+			}
+		} else {
+			// Only render entries within visible range
+			if item.entryIndex >= visibleStart && item.entryIndex < visibleEnd {
+				isSelected := item.entryIndex == m.cursor
+				line := m.renderEntry(*item.entry, isSelected, width-4)
+				b.WriteString(line)
+				b.WriteString("\n")
+			}
 		}
+	}
+
+	// Show scroll-down indicator if content below
+	if visibleEnd < totalEntries {
+		remaining := totalEntries - visibleEnd
+		b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↓ %d more below", remaining)))
+		b.WriteString("\n")
 	}
 
 	// Empty state
@@ -125,6 +159,62 @@ func (m Model) View() string {
 	box := paletteBox.Width(width).Render(content)
 
 	return box
+}
+
+// buildRenderItems creates a flat list of headers and entries for rendering.
+func (m Model) buildRenderItems() []renderItem {
+	groups := GroupEntriesByLayer(m.filtered)
+	layers := []Layer{LayerCurrentMode, LayerPlugin, LayerGlobal}
+
+	var items []renderItem
+	entryIndex := 0
+
+	for _, layer := range layers {
+		entries, ok := groups[layer]
+		if !ok || len(entries) == 0 {
+			continue
+		}
+
+		// Add layer header
+		items = append(items, renderItem{isHeader: true, layer: layer})
+
+		// Add entries
+		for i := range entries {
+			items = append(items, renderItem{
+				entry:      &entries[i],
+				entryIndex: entryIndex,
+			})
+			entryIndex++
+		}
+	}
+
+	return items
+}
+
+// layerHasVisibleEntries checks if a layer has any entries in the visible range.
+func (m Model) layerHasVisibleEntries(layer Layer, visibleStart, visibleEnd int) bool {
+	groups := GroupEntriesByLayer(m.filtered)
+	layers := []Layer{LayerCurrentMode, LayerPlugin, LayerGlobal}
+
+	entryIndex := 0
+	for _, l := range layers {
+		entries := groups[l]
+		layerStart := entryIndex
+		layerEnd := entryIndex + len(entries)
+
+		if l == layer {
+			// Check if any entries in this layer fall within visible range
+			return layerStart < visibleEnd && layerEnd > visibleStart
+		}
+		entryIndex = layerEnd
+	}
+	return false
+}
+
+// countEntriesInLayer returns the count of entries in a specific layer.
+func (m Model) countEntriesInLayer(layer Layer) int {
+	groups := GroupEntriesByLayer(m.filtered)
+	return len(groups[layer])
 }
 
 // renderLayerHeader renders a layer section header.
@@ -159,7 +249,13 @@ func (m Model) renderEntry(entry PaletteEntry, selected bool, maxWidth int) stri
 	// Description (truncate if needed)
 	descWidth := maxWidth - 12 - 20 - 4
 	desc := entry.Description
-	if len(desc) > descWidth {
+
+	// Show context count if command appears in multiple contexts
+	if entry.ContextCount > 1 {
+		desc = fmt.Sprintf("%s (%d contexts)", desc, entry.ContextCount)
+	}
+
+	if len(desc) > descWidth && descWidth > 3 {
 		desc = desc[:descWidth-3] + "..."
 	}
 	descStr := entryDesc.Render(desc)

@@ -25,9 +25,10 @@ type Model struct {
 	offset     int // scroll offset for virtual scrolling
 
 	// Display
-	width      int
-	height     int
-	maxVisible int
+	width           int
+	height          int
+	maxVisible      int
+	showAllContexts bool // false = current context only, true = all contexts grouped
 
 	// Context
 	activeContext string
@@ -76,13 +77,38 @@ func (m *Model) Open(km *keymap.Registry, plugins []plugin.Plugin, activeContext
 
 	// Rebuild entries
 	m.allEntries = BuildEntries(km, plugins, activeContext, pluginContext)
-	m.filtered = FilterEntries(m.allEntries, "")
+
+	// Default to current context mode (no duplicates)
+	m.showAllContexts = false
+	m.refilter()
 
 	// Reset state
 	m.textInput.SetValue("")
 	m.textInput.Focus()
 	m.cursor = 0
 	m.offset = 0
+}
+
+// ShowAllContexts returns whether all contexts mode is active.
+func (m Model) ShowAllContexts() bool {
+	return m.showAllContexts
+}
+
+// refilter applies the current filter mode and query to entries.
+func (m *Model) refilter() {
+	query := m.textInput.Value()
+
+	var base []PaletteEntry
+	if m.showAllContexts {
+		// All contexts mode: group by command, show context count
+		base = GroupEntriesByCommand(m.allEntries)
+	} else {
+		// Current context mode: only current + global
+		base = FilterEntriesForContext(m.allEntries, m.activeContext)
+	}
+
+	// Apply fuzzy filter
+	m.filtered = FilterEntries(base, query)
 }
 
 // Query returns the current search query.
@@ -159,6 +185,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.moveCursor(m.maxVisible)
 			return m, nil
 
+		case tea.KeyTab:
+			// Toggle between current context and all contexts mode
+			m.showAllContexts = !m.showAllContexts
+			m.refilter()
+			m.cursor = 0
+			m.offset = 0
+			return m, nil
+
 		default:
 			// Pass to text input
 			var cmd tea.Cmd
@@ -166,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 
 			// Re-filter on query change
-			m.filtered = FilterEntries(m.allEntries, m.textInput.Value())
+			m.refilter()
 			m.cursor = 0
 			m.offset = 0
 
