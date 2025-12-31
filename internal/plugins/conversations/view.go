@@ -611,6 +611,8 @@ func adapterAbbrev(session adapter.Session) string {
 		return "CX"
 	case "opencode":
 		return "OC"
+	case "gemini-cli":
+		return "GC"
 	default:
 		name := session.AdapterName
 		if name == "" {
@@ -638,6 +640,8 @@ func adapterShortName(session *adapter.Session) string {
 		return "codex"
 	case "opencode":
 		return "opencode"
+	case "gemini-cli":
+		return "gemini"
 	default:
 		if session.AdapterName != "" {
 			return strings.ToLower(session.AdapterName)
@@ -688,10 +692,13 @@ func adapterFilterOptions(adapters map[string]adapter.Adapter) []adapterFilterOp
 	if a, ok := adapters["opencode"]; ok {
 		addOption("opencode", a.Name(), "p")
 	}
+	if a, ok := adapters["gemini-cli"]; ok {
+		addOption("gemini-cli", a.Name(), "g")
+	}
 
 	var extra []adapterFilterOption
 	for id, a := range adapters {
-		if id == "claude-code" || id == "codex" {
+		if id == "claude-code" || id == "codex" || id == "opencode" || id == "gemini-cli" {
 			continue
 		}
 		name := a.Name()
@@ -732,6 +739,8 @@ func resumeCommand(session *adapter.Session) string {
 		return fmt.Sprintf("codex resume %s", session.ID)
 	case "opencode":
 		return fmt.Sprintf("opencode --continue -s %s", session.ID)
+	case "gemini-cli":
+		return fmt.Sprintf("gemini --resume %s", session.ID)
 	default:
 		return ""
 	}
@@ -759,6 +768,16 @@ func modelShortName(model string) string {
 			return parts[0]
 		}
 		return "o"
+	case strings.Contains(model, "gemini-3-pro"):
+		return "3Pro"
+	case strings.Contains(model, "gemini-3-flash"):
+		return "3Flash"
+	case strings.Contains(model, "gemini-2.0-flash"):
+		return "2Flash"
+	case strings.Contains(model, "gemini-1.5-pro"):
+		return "1.5Pro"
+	case strings.Contains(model, "gemini-1.5-flash"):
+		return "1.5Flash"
 	case strings.HasPrefix(model, "gemini"):
 		return "gemini"
 	case strings.HasPrefix(model, "grok"):
