@@ -561,16 +561,41 @@ func (m Model) buildDiagnosticsContent() string {
 	// Version info
 	b.WriteString(styles.Title.Render("Version"))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Current: %s\n", styles.Muted.Render(m.currentVersion)))
+
+	// Sidecar version
 	if m.updateAvailable != nil {
-		b.WriteString(fmt.Sprintf("  Latest:  %s  ", m.updateAvailable.LatestVersion))
-		b.WriteString(styles.StatusModified.Render("update available"))
-		b.WriteString("\n\n")
-		b.WriteString("  Update command:\n")
-		b.WriteString(fmt.Sprintf("  %s\n", styles.Muted.Render(m.updateAvailable.UpdateCommand)))
-	} else {
-		b.WriteString(styles.StatusCompleted.Render("  up to date"))
+		b.WriteString(fmt.Sprintf("  sidecar: %s → %s ",
+			styles.Muted.Render(m.currentVersion),
+			m.updateAvailable.LatestVersion))
+		b.WriteString(styles.StatusModified.Render("available"))
 		b.WriteString("\n")
+	} else {
+		b.WriteString(fmt.Sprintf("  sidecar: %s ", styles.Muted.Render(m.currentVersion)))
+		b.WriteString(styles.StatusCompleted.Render("✓"))
+		b.WriteString("\n")
+	}
+
+	// td version
+	if m.tdVersionInfo != nil {
+		if !m.tdVersionInfo.Installed {
+			b.WriteString(fmt.Sprintf("  td:      %s\n", styles.Muted.Render("not installed")))
+		} else if m.tdVersionInfo.HasUpdate {
+			b.WriteString(fmt.Sprintf("  td:      %s → %s ",
+				styles.Muted.Render(m.tdVersionInfo.CurrentVersion),
+				m.tdVersionInfo.LatestVersion))
+			b.WriteString(styles.StatusModified.Render("available"))
+			b.WriteString("\n")
+		} else {
+			b.WriteString(fmt.Sprintf("  td:      %s ", styles.Muted.Render(m.tdVersionInfo.CurrentVersion)))
+			b.WriteString(styles.StatusCompleted.Render("✓"))
+			b.WriteString("\n")
+		}
+	}
+
+	// Show unified update command if any updates available
+	if m.updateAvailable != nil || (m.tdVersionInfo != nil && m.tdVersionInfo.HasUpdate) {
+		b.WriteString("\n  Update:\n")
+		b.WriteString(fmt.Sprintf("  %s\n", styles.Muted.Render("curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash")))
 	}
 	b.WriteString("\n")
 

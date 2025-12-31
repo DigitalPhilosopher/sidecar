@@ -10,16 +10,24 @@ Terminal UI for monitoring AI coding agent sessions.
 
 Sidecar provides a unified terminal interface for viewing Claude Code conversations, git status, and task progress. Built for developers who want visibility into their AI coding sessions without leaving the terminal.
 
+## Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash
+```
+
+Or see [Getting Started](docs/GETTING_STARTED.md) for manual installation.
+
 ## Requirements
 
-- Go 1.23+
+- Go 1.21+
+- macOS, Linux, or WSL
 
 ## Quick Start
 
+After installation, run from any project directory:
+
 ```bash
-git clone https://github.com/marcus/sidecar
-cd sidecar
-make install
 sidecar
 ```
 

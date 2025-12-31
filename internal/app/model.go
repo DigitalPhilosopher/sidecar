@@ -50,6 +50,7 @@ type Model struct {
 	// Version info
 	currentVersion  string
 	updateAvailable *version.UpdateAvailableMsg
+	tdVersionInfo   *version.TdVersionMsg
 
 	// Intro animation
 	intro IntroModel
@@ -77,6 +78,7 @@ func (m Model) Init() tea.Cmd {
 		tickCmd(),
 		IntroTick(),
 		version.CheckAsync(m.currentVersion),
+		version.CheckTdAsync(),
 	}
 
 	// Start all registered plugins

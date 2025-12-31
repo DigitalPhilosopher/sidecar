@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	cacheFile = "version_cache.json"
-	cacheTTL  = 6 * time.Hour
+	cacheFile   = "version_cache.json"
+	tdCacheFile = "td_version_cache.json"
+	cacheTTL    = 6 * time.Hour
 )
 
 // CacheEntry stores cached version check result.
@@ -78,4 +79,48 @@ func IsCacheValid(entry *CacheEntry, currentVersion string) bool {
 		return false
 	}
 	return true
+}
+
+// tdCachePath returns the full path to the td cache file.
+func tdCachePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "sidecar", tdCacheFile)
+}
+
+// LoadTdCache reads cached td version check result from disk.
+func LoadTdCache() (*CacheEntry, error) {
+	data, err := os.ReadFile(tdCachePath())
+	if err != nil {
+		return nil, err
+	}
+
+	var entry CacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
+}
+
+// SaveTdCache writes td version check result to disk.
+func SaveTdCache(entry *CacheEntry) error {
+	path := tdCachePath()
+	if path == "" {
+		return nil
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
 }

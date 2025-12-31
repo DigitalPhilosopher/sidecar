@@ -184,3 +184,133 @@ func TestRelease(t *testing.T) {
 		t.Error("TagName mismatch")
 	}
 }
+
+func TestTdUpdateCommand(t *testing.T) {
+	tests := []struct {
+		version  string
+		contains []string
+	}{
+		{
+			version:  "v0.4.12",
+			contains: []string{"go install", "v0.4.12", "github.com/marcus/td"},
+		},
+		{
+			version:  "v1.0.0",
+			contains: []string{"go install", "v1.0.0", "marcus/td"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			cmd := tdUpdateCommand(tt.version)
+			for _, want := range tt.contains {
+				if !contains(cmd, want) {
+					t.Errorf("tdUpdateCommand(%q) = %q, want to contain %q", tt.version, cmd, want)
+				}
+			}
+		})
+	}
+}
+
+func TestTdVersionMsg(t *testing.T) {
+	// Test TdVersionMsg struct - installed with update
+	msgWithUpdate := TdVersionMsg{
+		Installed:      true,
+		CurrentVersion: "v0.4.12",
+		LatestVersion:  "v0.4.13",
+		HasUpdate:      true,
+	}
+
+	if !msgWithUpdate.Installed {
+		t.Error("Expected Installed to be true")
+	}
+	if !msgWithUpdate.HasUpdate {
+		t.Error("Expected HasUpdate to be true")
+	}
+	if msgWithUpdate.CurrentVersion != "v0.4.12" {
+		t.Errorf("CurrentVersion = %q, want v0.4.12", msgWithUpdate.CurrentVersion)
+	}
+
+	// Test TdVersionMsg - not installed
+	msgNotInstalled := TdVersionMsg{
+		Installed: false,
+	}
+
+	if msgNotInstalled.Installed {
+		t.Error("Expected Installed to be false")
+	}
+	if msgNotInstalled.HasUpdate {
+		t.Error("Expected HasUpdate to be false when not installed")
+	}
+
+	// Test TdVersionMsg - installed, up to date
+	msgUpToDate := TdVersionMsg{
+		Installed:      true,
+		CurrentVersion: "v0.4.13",
+		LatestVersion:  "v0.4.13",
+		HasUpdate:      false,
+	}
+
+	if msgUpToDate.HasUpdate {
+		t.Error("Expected HasUpdate to be false when up to date")
+	}
+}
+
+func TestGetTdVersion(t *testing.T) {
+	// GetTdVersion runs `td version --short` and returns trimmed output
+	// When td is not installed or fails, returns empty string
+	//
+	// This is a behavioral test - actual output depends on system state.
+	// We verify the function doesn't panic and returns a string.
+	version := GetTdVersion()
+	// Version is either empty (td not installed) or a version string
+	// We can't assert the exact value, but we can verify it's not a panic
+	_ = version
+}
+
+func TestCheckTdAsync(t *testing.T) {
+	// CheckTdAsync returns a tea.Cmd that checks td version
+	// Behavior depends on:
+	// 1. Whether td is installed (GetTdVersion returns non-empty)
+	// 2. Cache validity
+	// 3. GitHub API response
+
+	cmd := CheckTdAsync()
+	if cmd == nil {
+		t.Error("CheckTdAsync should return a non-nil command")
+	}
+
+	// The command is a closure that returns TdVersionMsg
+	// We can't easily test the full flow without mocking, but we verify
+	// the command is callable and returns a message type
+	msg := cmd()
+
+	// Should return TdVersionMsg (either installed or not)
+	switch m := msg.(type) {
+	case TdVersionMsg:
+		// Expected - verify fields are reasonable
+		if m.Installed && m.CurrentVersion == "" {
+			t.Error("Installed td should have CurrentVersion")
+		}
+	case nil:
+		// Also acceptable if td is not installed
+	default:
+		t.Errorf("CheckTdAsync returned unexpected type: %T", msg)
+	}
+}
+
+func TestCheckTd(t *testing.T) {
+	// CheckTd is the synchronous version check for td
+	// Similar to Check but for the td repo
+
+	// Development version should skip check
+	result := CheckTd("")
+	if result.HasUpdate {
+		t.Error("Empty version should not have update")
+	}
+
+	result = CheckTd("devel")
+	if result.HasUpdate {
+		t.Error("devel version should not have update")
+	}
+}

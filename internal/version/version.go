@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	repoOwner = "sst"
-	repoName  = "sidecar"
-	apiURL    = "https://api.github.com/repos/%s/%s/releases/latest"
+	repoOwner   = "sst"
+	repoName    = "sidecar"
+	tdRepoOwner = "marcus"
+	tdRepoName  = "td"
+	apiURL      = "https://api.github.com/repos/%s/%s/releases/latest"
 )
 
 // Release represents a GitHub release response.
@@ -32,6 +34,16 @@ type CheckResult struct {
 
 // Check fetches the latest release from GitHub and compares versions.
 func Check(currentVersion string) CheckResult {
+	return CheckRepo(repoOwner, repoName, currentVersion)
+}
+
+// CheckTd fetches the latest td release from GitHub and compares versions.
+func CheckTd(currentVersion string) CheckResult {
+	return CheckRepo(tdRepoOwner, tdRepoName, currentVersion)
+}
+
+// CheckRepo fetches the latest release for a repo and compares versions.
+func CheckRepo(owner, repo, currentVersion string) CheckResult {
 	result := CheckResult{CurrentVersion: currentVersion}
 
 	if isDevelopmentVersion(currentVersion) {
@@ -39,7 +51,7 @@ func Check(currentVersion string) CheckResult {
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	url := fmt.Sprintf(apiURL, repoOwner, repoName)
+	url := fmt.Sprintf(apiURL, owner, repo)
 
 	resp, err := client.Get(url)
 	if err != nil {

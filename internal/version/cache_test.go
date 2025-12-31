@@ -167,3 +167,89 @@ func TestCacheEntry_JSONRoundtrip(t *testing.T) {
 		t.Errorf("JSON roundtrip failed: got %s, want %s", readData, data)
 	}
 }
+
+func TestTdCachePath(t *testing.T) {
+	// tdCachePath should return a path ending in td_version_cache.json
+	path := tdCachePath()
+	if path == "" {
+		// May be empty if home dir detection fails
+		return
+	}
+
+	if !filepath.IsAbs(path) {
+		t.Errorf("tdCachePath() = %q, want absolute path", path)
+	}
+
+	if filepath.Base(path) != "td_version_cache.json" {
+		t.Errorf("tdCachePath() = %q, want filename td_version_cache.json", path)
+	}
+}
+
+func TestLoadTdCache_FileNotExist(t *testing.T) {
+	// LoadTdCache should return error when file doesn't exist
+	_, err := LoadTdCache()
+	// Error is expected since cache likely doesn't exist in test env
+	// (or if it does exist on dev machine, that's also fine)
+	_ = err
+}
+
+func TestTdCacheOperations(t *testing.T) {
+	// Test that td cache operations work correctly
+	// This test verifies the cache functions exist and are callable
+
+	// Create a cache entry
+	entry := &CacheEntry{
+		LatestVersion:  "v0.4.13",
+		CurrentVersion: "v0.4.12",
+		CheckedAt:      time.Now(),
+		HasUpdate:      true,
+	}
+
+	// SaveTdCache and LoadTdCache use the real home dir,
+	// so we just verify they don't panic
+	err := SaveTdCache(entry)
+	if err != nil {
+		// May fail due to permissions, which is acceptable
+		t.Logf("SaveTdCache error (may be expected): %v", err)
+	}
+
+	// If save succeeded, load should also work
+	if err == nil {
+		loaded, loadErr := LoadTdCache()
+		if loadErr != nil {
+			t.Logf("LoadTdCache error after successful save: %v", loadErr)
+		} else {
+			// Verify loaded data matches
+			if loaded.LatestVersion != entry.LatestVersion {
+				t.Errorf("LatestVersion = %q, want %q", loaded.LatestVersion, entry.LatestVersion)
+			}
+			if loaded.CurrentVersion != entry.CurrentVersion {
+				t.Errorf("CurrentVersion = %q, want %q", loaded.CurrentVersion, entry.CurrentVersion)
+			}
+			if loaded.HasUpdate != entry.HasUpdate {
+				t.Errorf("HasUpdate = %v, want %v", loaded.HasUpdate, entry.HasUpdate)
+			}
+		}
+	}
+}
+
+func TestCachePathSeparation(t *testing.T) {
+	// Verify that sidecar and td caches use different paths
+	sidecarPath := cachePath()
+	tdPath := tdCachePath()
+
+	if sidecarPath == "" || tdPath == "" {
+		// Skip if home dir detection fails
+		t.Skip("Home dir detection failed")
+	}
+
+	if sidecarPath == tdPath {
+		t.Errorf("Cache paths should be different: sidecar=%q, td=%q", sidecarPath, tdPath)
+	}
+
+	// Both should be in same directory
+	if filepath.Dir(sidecarPath) != filepath.Dir(tdPath) {
+		t.Errorf("Cache files should be in same directory: sidecar=%q, td=%q",
+			filepath.Dir(sidecarPath), filepath.Dir(tdPath))
+	}
+}

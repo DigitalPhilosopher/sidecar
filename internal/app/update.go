@@ -147,6 +147,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			15*time.Second,
 		)
 		return m, nil
+
+	case version.TdVersionMsg:
+		m.tdVersionInfo = &msg
+		// Show toast if td has an update (only if sidecar doesn't also have one)
+		if msg.HasUpdate && m.updateAvailable == nil {
+			m.ShowToast(
+				fmt.Sprintf("td update %s available! Press ! for details", msg.LatestVersion),
+				15*time.Second,
+			)
+		}
+		return m, nil
 	}
 
 	// Forward other messages to ALL plugins (not just active)

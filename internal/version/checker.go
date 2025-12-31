@@ -2,16 +2,26 @@ package version
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// UpdateAvailableMsg is sent when a new version is available.
+// UpdateAvailableMsg is sent when a new sidecar version is available.
 type UpdateAvailableMsg struct {
 	CurrentVersion string
 	LatestVersion  string
 	UpdateCommand  string
+}
+
+// TdVersionMsg is sent with td version info (installed or not).
+type TdVersionMsg struct {
+	Installed      bool
+	CurrentVersion string
+	LatestVersion  string
+	HasUpdate      bool
 }
 
 // updateCommand generates the go install command for updating.
@@ -59,5 +69,66 @@ func CheckAsync(currentVersion string) tea.Cmd {
 		}
 
 		return nil
+	}
+}
+
+// tdUpdateCommand generates the go install command for updating td.
+func tdUpdateCommand(version string) string {
+	return fmt.Sprintf(
+		"go install github.com/marcus/td@%s",
+		version,
+	)
+}
+
+// GetTdVersion returns the installed td version by running `td version --short`.
+// Returns empty string if td is not installed or command fails.
+func GetTdVersion() string {
+	out, err := exec.Command("td", "version", "--short").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// CheckTdAsync returns a Bubble Tea command that checks td version in background.
+// Returns TdVersionMsg with installation status and version info.
+func CheckTdAsync() tea.Cmd {
+	return func() tea.Msg {
+		tdVersion := GetTdVersion()
+
+		// td not installed
+		if tdVersion == "" {
+			return TdVersionMsg{Installed: false}
+		}
+
+		// Check cache first
+		if cached, err := LoadTdCache(); err == nil && IsCacheValid(cached, tdVersion) {
+			return TdVersionMsg{
+				Installed:      true,
+				CurrentVersion: tdVersion,
+				LatestVersion:  cached.LatestVersion,
+				HasUpdate:      cached.HasUpdate,
+			}
+		}
+
+		// Cache miss or invalid, fetch from GitHub
+		result := CheckTd(tdVersion)
+
+		// Only cache successful checks
+		if result.Error == nil {
+			_ = SaveTdCache(&CacheEntry{
+				LatestVersion:  result.LatestVersion,
+				CurrentVersion: tdVersion,
+				CheckedAt:      time.Now(),
+				HasUpdate:      result.HasUpdate,
+			})
+		}
+
+		return TdVersionMsg{
+			Installed:      true,
+			CurrentVersion: tdVersion,
+			LatestVersion:  result.LatestVersion,
+			HasUpdate:      result.HasUpdate,
+		}
 	}
 }
