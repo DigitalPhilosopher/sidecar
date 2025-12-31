@@ -1450,7 +1450,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.commitError = ""
 		return p, nil
 
-	case "ctrl+enter":
+	case "ctrl+s":
 		// Execute commit if message not empty
 		return p, p.tryCommit()
 
