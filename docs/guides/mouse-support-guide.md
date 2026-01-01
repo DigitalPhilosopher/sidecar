@@ -169,14 +169,30 @@ case mouse.ActionDrag:
 ## Hit Region Best Practices
 
 1. **Clear regions each render** - The layout may change, so rebuild the hit map
-2. **Register from bottom to top** - Later regions take priority (for overlapping)
+2. **Register general regions FIRST, specific regions LAST** - Regions are tested in reverse order (last added = checked first). Add container/pane regions first as fallbacks, then add clickable items last so they take priority.
 3. **Use meaningful IDs** - `"file"`, `"commit"`, `"divider"` not `"region1"`
 4. **Store indices in Data** - Use `Data` field for item indices, not string parsing
 5. **Account for borders** - Subtract padding/borders from click regions
 
-## Example: Git Plugin
+### Region Priority (Critical)
 
-The git plugin demonstrates full mouse support:
+This is a common source of bugs. The `HitMap.Test()` method checks regions in **reverse order** - the last region added is tested first.
+
+```go
+// WRONG: Pane regions added last will catch all clicks
+p.mouseHandler.HitMap.AddRect("file-item", x, y, w, 1, idx)  // Added first
+p.mouseHandler.HitMap.AddRect("tree-pane", 0, 0, w, h, nil)  // Added last - tested first!
+
+// CORRECT: Add general regions first (fallback), specific regions last (priority)
+p.mouseHandler.HitMap.AddRect("tree-pane", 0, 0, w, h, nil)  // Added first - tested last
+p.mouseHandler.HitMap.AddRect("file-item", x, y, w, 1, idx)  // Added last - tested first!
+```
+
+If clicks on items aren't registering but pane focus works, check your region ordering.
+
+## Example Implementations
+
+### Git Plugin
 
 - `internal/plugins/gitstatus/mouse.go` - Mouse event handlers
 - `internal/plugins/gitstatus/sidebar_view.go` - Hit region registration
@@ -186,6 +202,19 @@ Key features:
 - Scroll wheel navigation
 - Double-click to open files or toggle folders
 - Drag pane divider to resize
+
+### File Browser Plugin
+
+- `internal/plugins/filebrowser/mouse.go` - Region constants and all mouse handlers
+- `internal/plugins/filebrowser/view.go` - Hit region registration in `renderView()`
+- `internal/plugins/filebrowser/plugin.go` - Handler field and Update() routing
+
+Key features:
+- Click tree items to select, double-click to open/toggle
+- Click panes to focus (tree or preview)
+- Scroll wheel moves cursor (tree) or scrolls content (preview)
+- Drag pane divider to resize
+- Quick open modal with click/double-click support
 
 ## Embedded Plugins (TD Monitor)
 
@@ -217,3 +246,25 @@ Since mouse events require terminal interaction, test by:
 3. Using scroll wheel to navigate lists
 4. Double-clicking to trigger actions
 5. Dragging dividers to resize panes
+
+## Troubleshooting
+
+### Clicks not registering on items but pane focus works
+**Cause:** Region ordering is wrong. Pane regions are added after item regions, so they match first.
+**Fix:** Add pane/container regions FIRST, then add specific item regions LAST.
+
+### Y coordinates are off by a few lines
+**Cause:** Not accounting for input bars, headers, or borders.
+**Fix:** Calculate Y offset: `itemY = inputBarHeight + borderTop + headerLines + itemIndex`
+
+### Double-click not firing
+**Cause:** Double-click detection requires clicks within 400ms on the same region.
+**Fix:** Ensure the region ID and bounds are consistent between clicks. Check that `HandleMouse()` is being called for all mouse events.
+
+### Scroll not working in one pane
+**Cause:** Region not registered or X-coordinate fallback not implemented.
+**Fix:** If `action.Region` is nil, fall back to checking `action.X` to determine which pane to scroll.
+
+### Drag not working
+**Cause:** `StartDrag()` not called on initial click, or checking wrong region ID.
+**Fix:** Call `StartDrag(x, y, regionID, initialValue)` in the click handler, then check `DragRegion()` in the drag handler.

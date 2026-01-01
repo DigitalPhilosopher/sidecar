@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -136,11 +137,16 @@ type Plugin struct {
 
 	// File watcher
 	watcher *Watcher
+
+	// Mouse support
+	mouseHandler *mouse.Handler
 }
 
 // New creates a new File Browser plugin.
 func New() *Plugin {
-	return &Plugin{}
+	return &Plugin{
+		mouseHandler: mouse.NewHandler(),
+	}
 }
 
 // ID returns the plugin identifier.
@@ -387,6 +393,9 @@ func (p *Plugin) doFileOp(src, dst string) tea.Cmd {
 // Update handles messages.
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return p.handleMouse(msg)
+
 	case tea.WindowSizeMsg:
 		p.width = msg.Width
 		p.height = msg.Height

@@ -32,6 +32,9 @@ func (p *Plugin) calculatePaneWidths() {
 
 // renderView creates the 2-pane layout.
 func (p *Plugin) renderView() string {
+	// Clear mouse hit regions at start of each render
+	p.mouseHandler.Clear()
+
 	// Project search is a full overlay - render modal instead of normal panes
 	if p.projectSearchMode {
 		return p.renderProjectSearchModal()
@@ -112,6 +115,35 @@ func (p *Plugin) renderView() string {
 	}
 
 	parts = append(parts, panes)
+
+	// Register mouse hit regions for panes
+	// Panes start after any input bars; add 2 for pane header lines
+	paneY := inputBarHeight
+	treeItemY := paneY + 3 // border(1) + header(2)
+
+	// Register pane regions FIRST (tested last = lower priority, act as fallback)
+	// Tree pane region (x=0, full width including border)
+	p.mouseHandler.HitMap.AddRect(regionTreePane, 0, paneY, p.treeWidth+2, paneHeight, nil)
+
+	// Pane divider region (narrow area between panes)
+	p.mouseHandler.HitMap.AddRect(regionPaneDivider, p.treeWidth+2, paneY, 2, paneHeight, nil)
+
+	// Preview pane region
+	p.mouseHandler.HitMap.AddRect(regionPreviewPane, p.treeWidth+4, paneY, p.previewWidth+2, paneHeight, nil)
+
+	// Register individual tree items LAST (tested first = higher priority)
+	// Note: regions are tested in reverse order, so items added last take precedence
+	if p.tree != nil && p.tree.Len() > 0 {
+		end := p.treeScrollOff + innerHeight
+		if end > p.tree.Len() {
+			end = p.tree.Len()
+		}
+		for i := p.treeScrollOff; i < end; i++ {
+			itemY := treeItemY + (i - p.treeScrollOff)
+			// Register region: x=1 (inside border), width=treeWidth, height=1, data=tree index
+			p.mouseHandler.HitMap.AddRect(regionTreeItem, 1, itemY, p.treeWidth, 1, i)
+		}
+	}
 
 	return lipgloss.JoinVertical(lipgloss.Top, parts...)
 }
@@ -467,6 +499,17 @@ func (p *Plugin) renderQuickOpenModal() string {
 		sb.WriteString("\n")
 	}
 
+	// Calculate modal position for hit region registration
+	hPad := (p.width - modalWidth - 4) / 2
+	if hPad < 0 {
+		hPad = 0
+	}
+	modalX := hPad + 1 // +1 for modal border
+	modalItemY := 2 + 3 // paddingTop(2) + border(1) + header(2)
+	if p.quickOpenError != "" {
+		modalItemY++ // Extra line for error message
+	}
+
 	if len(p.quickOpenMatches) == 0 {
 		if p.quickOpenQuery != "" {
 			sb.WriteString(styles.Muted.Render("No matches"))
@@ -492,6 +535,10 @@ func (p *Plugin) renderQuickOpenModal() string {
 		for i := start; i < end; i++ {
 			match := p.quickOpenMatches[i]
 			isSelected := i == p.quickOpenCursor
+
+			// Register hit region for this quick open item
+			itemY := modalItemY + (i - start)
+			p.mouseHandler.HitMap.AddRect(regionQuickOpen, modalX, itemY, modalWidth-2, 1, i)
 
 			// Build the display line with highlighted match chars
 			line := p.renderQuickOpenMatch(match, modalWidth-4)
@@ -521,12 +568,7 @@ func (p *Plugin) renderQuickOpenModal() string {
 		Width(modalWidth).
 		Render(content)
 
-	// Center horizontally, position near top
-	hPad := (p.width - modalWidth - 4) / 2
-	if hPad < 0 {
-		hPad = 0
-	}
-
+	// Center horizontally, position near top (hPad already calculated above)
 	centered := lipgloss.NewStyle().
 		PaddingLeft(hPad).
 		PaddingTop(2).
