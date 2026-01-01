@@ -117,12 +117,22 @@ func DefaultBindings() []Binding {
 
 		// File browser tree context
 		{Key: "/", Command: "search", Context: "file-browser-tree"},
+		{Key: "ctrl+p", Command: "quick-open", Context: "file-browser-tree"},
+		{Key: "ctrl+s", Command: "project-search", Context: "file-browser-tree"},
+		{Key: "a", Command: "create-file", Context: "file-browser-tree"},
+		{Key: "A", Command: "create-dir", Context: "file-browser-tree"},
+		{Key: "d", Command: "delete", Context: "file-browser-tree"},
+		{Key: "y", Command: "yank", Context: "file-browser-tree"},
+		{Key: "p", Command: "paste", Context: "file-browser-tree"},
+		{Key: "s", Command: "sort", Context: "file-browser-tree"},
 		{Key: "r", Command: "rename", Context: "file-browser-tree"},
 		{Key: "m", Command: "move", Context: "file-browser-tree"},
 		{Key: "R", Command: "reveal", Context: "file-browser-tree"},
 
 		// File browser preview context
 		{Key: "/", Command: "search-content", Context: "file-browser-preview"},
+		{Key: "ctrl+p", Command: "quick-open", Context: "file-browser-preview"},
+		{Key: "ctrl+s", Command: "project-search", Context: "file-browser-preview"},
 		{Key: "R", Command: "reveal", Context: "file-browser-preview"},
 		{Key: "esc", Command: "back", Context: "file-browser-preview"},
 		{Key: "h", Command: "back", Context: "file-browser-preview"},
@@ -140,8 +150,6 @@ func DefaultBindings() []Binding {
 		{Key: "N", Command: "prev-match", Context: "file-browser-content-search"},
 
 		// File browser quick open context
-		{Key: "ctrl+p", Command: "quick-open", Context: "file-browser-tree"},
-		{Key: "ctrl+p", Command: "quick-open", Context: "file-browser-preview"},
 		{Key: "esc", Command: "cancel", Context: "file-browser-quick-open"},
 		{Key: "enter", Command: "select", Context: "file-browser-quick-open"},
 		{Key: "up", Command: "cursor-up", Context: "file-browser-quick-open"},
@@ -149,7 +157,17 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+n", Command: "cursor-down", Context: "file-browser-quick-open"},
 		{Key: "ctrl+p", Command: "cursor-up", Context: "file-browser-quick-open"},
 
-		// File browser file operation context (move/rename)
+		// File browser project search context
+		{Key: "esc", Command: "cancel", Context: "file-browser-project-search"},
+		{Key: "enter", Command: "select", Context: "file-browser-project-search"},
+		{Key: "tab", Command: "toggle", Context: "file-browser-project-search"},
+		{Key: " ", Command: "toggle", Context: "file-browser-project-search"},
+		{Key: "up", Command: "cursor-up", Context: "file-browser-project-search"},
+		{Key: "down", Command: "cursor-down", Context: "file-browser-project-search"},
+		{Key: "ctrl+n", Command: "cursor-down", Context: "file-browser-project-search"},
+		{Key: "ctrl+p", Command: "cursor-up", Context: "file-browser-project-search"},
+
+		// File browser file operation context (move/rename/create/delete)
 		{Key: "esc", Command: "cancel", Context: "file-browser-file-op"},
 		{Key: "enter", Command: "confirm", Context: "file-browser-file-op"},
 

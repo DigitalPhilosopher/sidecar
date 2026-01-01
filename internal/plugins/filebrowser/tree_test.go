@@ -106,7 +106,7 @@ func TestSortChildren(t *testing.T) {
 		{Name: "delta", IsDir: true},
 	}
 
-	sortChildren(children)
+	sortChildren(children, SortByName)
 
 	// Directories should come first
 	if !children[0].IsDir || !children[1].IsDir {

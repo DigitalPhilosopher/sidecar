@@ -259,7 +259,23 @@ Each plugin returns a context string that determines which bindings are active.
 | `file-browser-content-search` | Content search | File content search |
 | `file-browser-quick-open` | Quick open | Fuzzy file finder |
 | `file-browser-project-search` | Project search | Ripgrep search modal |
-| `file-browser-file-op` | File operation | Move/rename input |
+| `file-browser-file-op` | File operation | Create/rename/move/delete input |
+
+#### File Browser Tree Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `/` | search | Filter files by name |
+| `ctrl+p` | quick-open | Fuzzy file finder |
+| `ctrl+s` | project-search | Project-wide search (ripgrep) |
+| `a` | create-file | Create new file |
+| `A` | create-dir | Create new directory |
+| `d` | delete | Delete file/directory (with confirmation) |
+| `y` | yank | Copy file/directory to clipboard |
+| `p` | paste | Paste from clipboard |
+| `s` | sort | Cycle sort mode (name/size/time/type) |
+| `r` | rename | Rename file/directory |
+| `m` | move | Move file/directory |
+| `R` | reveal | Reveal in system file manager |
 
 ### TD Monitor Plugin
 

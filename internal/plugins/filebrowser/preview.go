@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/chroma/v2/quick"
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,6 +25,8 @@ type PreviewResult struct {
 	IsBinary         bool
 	IsTruncated      bool
 	TotalSize        int64
+	ModTime          time.Time   // File modification time
+	Mode             os.FileMode // File permissions
 	Error            error
 }
 
@@ -46,7 +49,11 @@ func LoadPreview(rootDir, path string) tea.Cmd {
 			}
 		}
 
-		result := PreviewResult{TotalSize: info.Size()}
+		result := PreviewResult{
+			TotalSize: info.Size(),
+			ModTime:   info.ModTime(),
+			Mode:      info.Mode(),
+		}
 
 		// Check size limit
 		readSize := info.Size()

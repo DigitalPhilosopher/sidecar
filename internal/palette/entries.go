@@ -48,11 +48,13 @@ type PaletteEntry struct {
 // activeContext is the current focus context (e.g., "git-diff").
 // pluginContext is the base plugin context (e.g., "git-status").
 func BuildEntries(km *keymap.Registry, plugins []plugin.Plugin, activeContext, pluginContext string) []PaletteEntry {
-	// Build a map of command metadata from plugins
+	// Build a map of command metadata from plugins, keyed by "commandID:context"
+	// This allows the same command ID to have different metadata in different contexts
 	cmdMeta := make(map[string]plugin.Command)
 	for _, p := range plugins {
 		for _, cmd := range p.Commands() {
-			cmdMeta[cmd.ID] = cmd
+			key := cmd.ID + ":" + cmd.Context
+			cmdMeta[key] = cmd
 		}
 	}
 
@@ -89,8 +91,9 @@ func bindingToEntry(b keymap.Binding, cmdMeta map[string]plugin.Command, activeC
 		Layer:     determineLayer(b.Context, activeContext, pluginContext),
 	}
 
-	// Try to get metadata from plugin command
-	if cmd, ok := cmdMeta[b.Command]; ok {
+	// Try to get metadata from plugin command using "commandID:context" key
+	metaKey := b.Command + ":" + b.Context
+	if cmd, ok := cmdMeta[metaKey]; ok {
 		entry.Name = cmd.Name
 		entry.Description = cmd.Description
 		entry.Category = cmd.Category

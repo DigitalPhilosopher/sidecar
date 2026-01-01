@@ -8,6 +8,37 @@ import (
 	"time"
 )
 
+// SortMode represents how files are sorted in the tree.
+type SortMode int
+
+const (
+	SortByName SortMode = iota
+	SortBySize
+	SortByTime
+	SortByType
+)
+
+// SortModeLabel returns a short label for display.
+func (s SortMode) Label() string {
+	switch s {
+	case SortByName:
+		return "name"
+	case SortBySize:
+		return "size"
+	case SortByTime:
+		return "time"
+	case SortByType:
+		return "type"
+	default:
+		return "name"
+	}
+}
+
+// NextSortMode cycles to the next sort mode.
+func (s SortMode) Next() SortMode {
+	return (s + 1) % 4
+}
+
 // FileNode represents a file or directory in the tree.
 type FileNode struct {
 	Name       string
@@ -28,6 +59,7 @@ type FileTree struct {
 	RootDir   string
 	FlatList  []*FileNode // Flattened visible nodes for cursor navigation
 	gitIgnore *GitIgnore
+	SortMode  SortMode // Current sort mode
 }
 
 // NewFileTree creates a new file tree rooted at the given directory.
@@ -113,19 +145,47 @@ func (t *FileTree) loadChildren(node *FileNode) error {
 		node.Children = append(node.Children, child)
 	}
 
-	sortChildren(node.Children)
+	sortChildren(node.Children, t.SortMode)
 	return nil
 }
 
-// sortChildren sorts nodes: directories first, then alphabetically by name.
-func sortChildren(children []*FileNode) {
+// sortChildren sorts nodes according to the given mode.
+func sortChildren(children []*FileNode, mode SortMode) {
 	sort.Slice(children, func(i, j int) bool {
-		// Directories come before files
+		// Directories always come before files
 		if children[i].IsDir != children[j].IsDir {
 			return children[i].IsDir
 		}
-		// Alphabetical, case-insensitive
-		return strings.ToLower(children[i].Name) < strings.ToLower(children[j].Name)
+
+		switch mode {
+		case SortBySize:
+			// Larger files first
+			if children[i].Size != children[j].Size {
+				return children[i].Size > children[j].Size
+			}
+			// Fall back to name
+			return strings.ToLower(children[i].Name) < strings.ToLower(children[j].Name)
+
+		case SortByTime:
+			// Newer files first
+			if !children[i].ModTime.Equal(children[j].ModTime) {
+				return children[i].ModTime.After(children[j].ModTime)
+			}
+			// Fall back to name
+			return strings.ToLower(children[i].Name) < strings.ToLower(children[j].Name)
+
+		case SortByType:
+			// Sort by extension, then by name
+			exti := strings.ToLower(filepath.Ext(children[i].Name))
+			extj := strings.ToLower(filepath.Ext(children[j].Name))
+			if exti != extj {
+				return exti < extj
+			}
+			return strings.ToLower(children[i].Name) < strings.ToLower(children[j].Name)
+
+		default: // SortByName
+			return strings.ToLower(children[i].Name) < strings.ToLower(children[j].Name)
+		}
 	})
 }
 
@@ -267,4 +327,25 @@ func (t *FileTree) Refresh() error {
 	// Restore expanded state
 	t.RestoreExpandedPaths(expandedPaths)
 	return nil
+}
+
+// SetSortMode changes the sort mode and re-sorts the tree.
+func (t *FileTree) SetSortMode(mode SortMode) {
+	t.SortMode = mode
+	if t.Root != nil {
+		t.resortNode(t.Root)
+		t.Flatten()
+	}
+}
+
+// resortNode recursively re-sorts a node and its children.
+func (t *FileTree) resortNode(node *FileNode) {
+	if len(node.Children) > 0 {
+		sortChildren(node.Children, t.SortMode)
+		for _, child := range node.Children {
+			if child.IsDir {
+				t.resortNode(child)
+			}
+		}
+	}
 }

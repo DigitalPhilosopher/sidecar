@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -37,6 +38,9 @@ const (
 	FileOpNone FileOpMode = iota
 	FileOpMove
 	FileOpRename
+	FileOpCreateFile
+	FileOpCreateDir
+	FileOpDelete
 )
 
 // Message types
@@ -63,6 +67,20 @@ type (
 	}
 	// FileOpSuccessMsg is sent when a file operation succeeds.
 	FileOpSuccessMsg struct {
+		Src string
+		Dst string
+	}
+	// CreateSuccessMsg is sent when a file/directory is created.
+	CreateSuccessMsg struct {
+		Path  string
+		IsDir bool
+	}
+	// DeleteSuccessMsg is sent when a file/directory is deleted.
+	DeleteSuccessMsg struct {
+		Path string
+	}
+	// PasteSuccessMsg is sent when a file/directory is pasted.
+	PasteSuccessMsg struct {
 		Src string
 		Dst string
 	}
@@ -96,6 +114,9 @@ type Plugin struct {
 	previewError       error
 	isBinary           bool
 	isTruncated        bool
+	previewSize        int64
+	previewModTime     time.Time
+	previewMode        os.FileMode
 
 	// Dimensions
 	width, height int
@@ -127,13 +148,18 @@ type Plugin struct {
 	projectSearchMode  bool
 	projectSearchState *ProjectSearchState
 
-	// File operation state (move/rename)
+	// File operation state (move/rename/create/delete)
 	fileOpMode          FileOpMode
 	fileOpTarget        *FileNode       // The file being operated on
-	fileOpTextInput     textinput.Model // Text input for rename/move
+	fileOpTextInput     textinput.Model // Text input for rename/move/create
 	fileOpError         string          // Error message if operation failed
 	fileOpConfirmCreate bool            // True when waiting for directory creation confirmation
 	fileOpConfirmPath   string          // The directory path to create
+	fileOpConfirmDelete bool            // True when waiting for delete confirmation
+
+	// Clipboard state (yank/paste)
+	clipboardPath  string // Relative path of yanked file/directory
+	clipboardIsDir bool   // Whether yanked item is a directory
 
 	// File watcher
 	watcher *Watcher
@@ -304,6 +330,16 @@ func validateFilename(name string) error {
 // executeFileOp performs the pending file operation.
 func (p *Plugin) executeFileOp() (plugin.Plugin, tea.Cmd) {
 	input := p.fileOpTextInput.Value()
+
+	// Handle create operations
+	if p.fileOpMode == FileOpCreateFile || p.fileOpMode == FileOpCreateDir {
+		if input == "" {
+			p.fileOpMode = FileOpNone
+			return p, nil
+		}
+		return p, p.doCreate(input, p.fileOpMode == FileOpCreateDir)
+	}
+
 	if p.fileOpTarget == nil || input == "" {
 		p.fileOpMode = FileOpNone
 		return p, nil
@@ -390,6 +426,242 @@ func (p *Plugin) doFileOp(src, dst string) tea.Cmd {
 	}
 }
 
+// doCreate creates a new file or directory.
+func (p *Plugin) doCreate(name string, isDir bool) tea.Cmd {
+	return func() tea.Msg {
+		// Validate filename
+		if err := validateFilename(name); err != nil {
+			return FileOpErrorMsg{Err: err}
+		}
+
+		// Determine parent directory based on current selection
+		var parentDir string
+		if p.fileOpTarget != nil {
+			if p.fileOpTarget.IsDir {
+				parentDir = filepath.Join(p.ctx.WorkDir, p.fileOpTarget.Path)
+			} else {
+				// If a file is selected, create in its parent directory
+				parentDir = filepath.Join(p.ctx.WorkDir, filepath.Dir(p.fileOpTarget.Path))
+			}
+		} else {
+			parentDir = p.ctx.WorkDir
+		}
+
+		fullPath := filepath.Join(parentDir, name)
+
+		// Validate path is within project
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("invalid path")}
+		}
+		absWorkDir, err := filepath.Abs(p.ctx.WorkDir)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("failed to resolve work directory")}
+		}
+		relPath, err := filepath.Rel(absWorkDir, absPath)
+		if err != nil || strings.HasPrefix(relPath, "..") {
+			return FileOpErrorMsg{Err: fmt.Errorf("cannot create files outside project directory")}
+		}
+
+		// Check if already exists
+		if _, err := os.Stat(fullPath); err == nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("already exists: %s", name)}
+		}
+
+		if isDir {
+			if err := os.MkdirAll(fullPath, 0755); err != nil {
+				return FileOpErrorMsg{Err: err}
+			}
+		} else {
+			// Create parent directories if needed
+			if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+				return FileOpErrorMsg{Err: err}
+			}
+			f, err := os.Create(fullPath)
+			if err != nil {
+				return FileOpErrorMsg{Err: err}
+			}
+			f.Close()
+		}
+
+		return CreateSuccessMsg{Path: fullPath, IsDir: isDir}
+	}
+}
+
+// doDelete deletes the target file or directory.
+func (p *Plugin) doDelete() tea.Cmd {
+	return func() tea.Msg {
+		if p.fileOpTarget == nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("no target selected")}
+		}
+
+		fullPath := filepath.Join(p.ctx.WorkDir, p.fileOpTarget.Path)
+
+		// Validate path is within project (safety check)
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("invalid path")}
+		}
+		absWorkDir, err := filepath.Abs(p.ctx.WorkDir)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("failed to resolve work directory")}
+		}
+		relPath, err := filepath.Rel(absWorkDir, absPath)
+		if err != nil || strings.HasPrefix(relPath, "..") {
+			return FileOpErrorMsg{Err: fmt.Errorf("cannot delete files outside project directory")}
+		}
+
+		// Don't allow deleting the project root
+		if relPath == "." {
+			return FileOpErrorMsg{Err: fmt.Errorf("cannot delete project root")}
+		}
+
+		// Remove file or directory (recursively for directories)
+		if err := os.RemoveAll(fullPath); err != nil {
+			return FileOpErrorMsg{Err: err}
+		}
+
+		return DeleteSuccessMsg{Path: fullPath}
+	}
+}
+
+// doPaste copies the clipboard file/directory to the target location.
+func (p *Plugin) doPaste(targetNode *FileNode) tea.Cmd {
+	return func() tea.Msg {
+		if p.clipboardPath == "" {
+			return FileOpErrorMsg{Err: fmt.Errorf("nothing to paste")}
+		}
+
+		srcPath := filepath.Join(p.ctx.WorkDir, p.clipboardPath)
+
+		// Determine destination directory
+		var destDir string
+		if targetNode.IsDir {
+			destDir = filepath.Join(p.ctx.WorkDir, targetNode.Path)
+		} else {
+			// If a file is selected, paste into its parent directory
+			destDir = filepath.Join(p.ctx.WorkDir, filepath.Dir(targetNode.Path))
+		}
+
+		// Check if source exists
+		srcInfo, err := os.Stat(srcPath)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("source not found: %s", filepath.Base(p.clipboardPath))}
+		}
+
+		// Generate destination path
+		srcName := filepath.Base(p.clipboardPath)
+		destPath := filepath.Join(destDir, srcName)
+
+		// Handle name conflicts by appending _copy or _copy2, etc.
+		if _, err := os.Stat(destPath); err == nil {
+			base := srcName
+			ext := filepath.Ext(srcName)
+			if ext != "" {
+				base = srcName[:len(srcName)-len(ext)]
+			}
+			for i := 1; ; i++ {
+				suffix := "_copy"
+				if i > 1 {
+					suffix = fmt.Sprintf("_copy%d", i)
+				}
+				newName := base + suffix + ext
+				destPath = filepath.Join(destDir, newName)
+				if _, err := os.Stat(destPath); os.IsNotExist(err) {
+					break
+				}
+				if i > 100 {
+					return FileOpErrorMsg{Err: fmt.Errorf("too many copies")}
+				}
+			}
+		}
+
+		// Validate destination is within project
+		absDestPath, err := filepath.Abs(destPath)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("invalid path")}
+		}
+		absWorkDir, err := filepath.Abs(p.ctx.WorkDir)
+		if err != nil {
+			return FileOpErrorMsg{Err: fmt.Errorf("failed to resolve work directory")}
+		}
+		relPath, err := filepath.Rel(absWorkDir, absDestPath)
+		if err != nil || strings.HasPrefix(relPath, "..") {
+			return FileOpErrorMsg{Err: fmt.Errorf("cannot paste outside project directory")}
+		}
+
+		// Copy file or directory
+		if srcInfo.IsDir() {
+			if err := copyDir(srcPath, destPath); err != nil {
+				return FileOpErrorMsg{Err: err}
+			}
+		} else {
+			if err := copyFile(srcPath, destPath); err != nil {
+				return FileOpErrorMsg{Err: err}
+			}
+		}
+
+		return PasteSuccessMsg{Src: srcPath, Dst: destPath}
+	}
+}
+
+// copyFile copies a single file.
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// copyDir recursively copies a directory.
+func copyDir(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // Update handles messages.
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -412,6 +684,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			p.isBinary = msg.Result.IsBinary
 			p.isTruncated = msg.Result.IsTruncated
 			p.previewError = msg.Result.Error
+			p.previewSize = msg.Result.TotalSize
+			p.previewModTime = msg.Result.ModTime
+			p.previewMode = msg.Result.Mode
 			p.previewScroll = 0
 			// Re-run search if still in search mode (e.g., navigating files with j/k)
 			if p.contentSearchMode && p.contentSearchQuery != "" {
@@ -447,6 +722,25 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.fileOpMode = FileOpNone
 		p.fileOpTarget = nil
 		p.fileOpError = ""
+		return p, p.refresh()
+
+	case CreateSuccessMsg:
+		// Clear file operation state and refresh
+		p.fileOpMode = FileOpNone
+		p.fileOpTarget = nil
+		p.fileOpError = ""
+		return p, p.refresh()
+
+	case DeleteSuccessMsg:
+		// Clear file operation state and refresh
+		p.fileOpMode = FileOpNone
+		p.fileOpTarget = nil
+		p.fileOpError = ""
+		p.fileOpConfirmDelete = false
+		return p, p.refresh()
+
+	case PasteSuccessMsg:
+		// Refresh after paste
 		return p, p.refresh()
 
 	case ProjectSearchResultsMsg:
@@ -660,6 +954,62 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpError = ""
 		}
 
+	case "a":
+		// Create new file in current directory
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil {
+			p.fileOpMode = FileOpCreateFile
+			p.fileOpTarget = node // Use as reference for directory
+			p.fileOpTextInput = textinput.New()
+			p.fileOpTextInput.Placeholder = "filename"
+			p.fileOpTextInput.Focus()
+			p.fileOpError = ""
+		}
+
+	case "A":
+		// Create new directory in current directory
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil {
+			p.fileOpMode = FileOpCreateDir
+			p.fileOpTarget = node // Use as reference for directory
+			p.fileOpTextInput = textinput.New()
+			p.fileOpTextInput.Placeholder = "dirname"
+			p.fileOpTextInput.Focus()
+			p.fileOpError = ""
+		}
+
+	case "d":
+		// Delete file/directory (requires confirmation)
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil && node != p.tree.Root {
+			p.fileOpMode = FileOpDelete
+			p.fileOpTarget = node
+			p.fileOpConfirmDelete = true
+			p.fileOpError = ""
+		}
+
+	case "y":
+		// Yank (copy) file/directory to clipboard
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil && node != p.tree.Root {
+			p.clipboardPath = node.Path
+			p.clipboardIsDir = node.IsDir
+		}
+
+	case "p":
+		// Paste file/directory from clipboard
+		if p.clipboardPath != "" {
+			node := p.tree.GetNode(p.treeCursor)
+			if node != nil {
+				return p, p.doPaste(node)
+			}
+		}
+
+	case "s":
+		// Cycle sort mode
+		newMode := p.tree.SortMode.Next()
+		p.tree.SetSortMode(newMode)
+
 	case "/":
 		p.searchMode = true
 		p.searchQuery = ""
@@ -769,11 +1119,29 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
-// handleFileOpKey handles key input during file operation mode (move/rename).
+// handleFileOpKey handles key input during file operation mode (move/rename/create/delete).
 func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	key := msg.String()
 
-	// Handle confirmation mode for directory creation
+	// Handle delete confirmation mode
+	if p.fileOpConfirmDelete {
+		switch key {
+		case "y", "Y":
+			// Proceed with delete
+			p.fileOpConfirmDelete = false
+			return p, p.doDelete()
+		case "n", "N", "esc":
+			// Cancel delete
+			p.fileOpMode = FileOpNone
+			p.fileOpTarget = nil
+			p.fileOpError = ""
+			p.fileOpConfirmDelete = false
+			return p, nil
+		}
+		return p, nil
+	}
+
+	// Handle confirmation mode for directory creation (during move)
 	if p.fileOpConfirmCreate {
 		switch key {
 		case "y", "Y":
@@ -1574,9 +1942,15 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
 		{ID: "search", Name: "Filter", Description: "Filter files by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 3},
-		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
-		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
+		{ID: "create-file", Name: "New", Description: "Create new file", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "create-dir", Name: "Mkdir", Description: "Create new directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "delete", Name: "Delete", Description: "Delete file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "yank", Name: "Yank", Description: "Copy file to clipboard", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
+		{ID: "paste", Name: "Paste", Description: "Paste file from clipboard", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
+		{ID: "sort", Name: "Sort", Description: "Cycle sort mode", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 6},
+		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 7},
+		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 7},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 8},
 		// Preview pane commands
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
@@ -1596,7 +1970,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "select", Name: "Open", Description: "Open selected result", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 1},
 		{ID: "toggle", Name: "Toggle", Description: "Expand/collapse file", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 2},
 		{ID: "cancel", Name: "Close", Description: "Close search", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 3},
-		// File operation commands (move/rename)
+		// File operation commands (move/rename/create/delete)
 		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 	}

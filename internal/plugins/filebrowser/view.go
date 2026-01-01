@@ -184,9 +184,19 @@ func (p *Plugin) renderSearchBar() string {
 	return styles.ModalTitle.Render(searchLine)
 }
 
-// renderFileOpBar renders the file operation input bar (move/rename).
+// renderFileOpBar renders the file operation input bar (move/rename/create/delete).
 func (p *Plugin) renderFileOpBar() string {
-	// Handle confirmation mode for directory creation
+	// Handle delete confirmation mode
+	if p.fileOpConfirmDelete && p.fileOpTarget != nil {
+		itemType := "file"
+		if p.fileOpTarget.IsDir {
+			itemType = "directory"
+		}
+		confirmLine := fmt.Sprintf(" Delete %s '%s'? [y]es / [n]o", itemType, p.fileOpTarget.Name)
+		return styles.ModalTitle.Render(confirmLine)
+	}
+
+	// Handle confirmation mode for directory creation (during move)
 	if p.fileOpConfirmCreate {
 		confirmLine := fmt.Sprintf(" Create '%s'? [y]es / [n]o", p.fileOpConfirmPath)
 		return styles.ModalTitle.Render(confirmLine)
@@ -198,6 +208,10 @@ func (p *Plugin) renderFileOpBar() string {
 		prompt = "Rename: "
 	case FileOpMove:
 		prompt = "Move to: "
+	case FileOpCreateFile:
+		prompt = "New file: "
+	case FileOpCreateDir:
+		prompt = "New dir: "
 	default:
 		return ""
 	}
@@ -218,9 +232,13 @@ func (p *Plugin) renderFileOpBar() string {
 func (p *Plugin) renderTreePane(visibleHeight int) string {
 	var sb strings.Builder
 
-	// Header
+	// Header with sort mode indicator
 	header := styles.Title.Render("Files")
 	sb.WriteString(header)
+	if p.tree != nil {
+		sb.WriteString("  ")
+		sb.WriteString(styles.Muted.Render("[" + p.tree.SortMode.Label() + "]"))
+	}
 	sb.WriteString("\n\n")
 
 	if p.tree == nil || p.tree.Len() == 0 {
@@ -303,12 +321,23 @@ func (p *Plugin) renderTreeNode(node *FileNode, selected bool, maxWidth int) str
 func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 	var sb strings.Builder
 
-	// Header
+	// Header with file path
 	header := "Preview"
 	if p.previewFile != "" {
 		header = truncatePath(p.previewFile, p.previewWidth-4)
 	}
 	sb.WriteString(styles.Title.Render(header))
+
+	// Metadata line (size, mod time, permissions)
+	if p.previewFile != "" && p.previewSize > 0 {
+		meta := fmt.Sprintf("%s  %s  %s",
+			formatSize(p.previewSize),
+			p.previewModTime.Format("Jan 2 15:04"),
+			p.previewMode.String(),
+		)
+		sb.WriteString("  ")
+		sb.WriteString(styles.Muted.Render(meta))
+	}
 	sb.WriteString("\n\n")
 
 	if p.previewFile == "" {
@@ -462,6 +491,20 @@ func truncatePath(path string, maxWidth int) string {
 	}
 	// Show ...end of path
 	return "..." + path[len(path)-maxWidth+3:]
+}
+
+// formatSize formats a file size in human-readable form.
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // renderQuickOpenModal renders the quick open overlay.
