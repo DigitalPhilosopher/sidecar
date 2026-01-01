@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
 	"github.com/marcus/sidecar/internal/version"
@@ -97,6 +98,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case ToastMsg:
+		m.ShowToast(msg.Message, msg.Duration)
+		return m, nil
+
+	case appmsg.ToastMsg:
 		m.ShowToast(msg.Message, msg.Duration)
 		return m, nil
 

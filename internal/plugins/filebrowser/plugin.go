@@ -17,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -994,6 +995,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		if node != nil && node != p.tree.Root {
 			p.clipboardPath = node.Path
 			p.clipboardIsDir = node.IsDir
+			return p, msg.ShowToast("Yanked: "+node.Path, 2*time.Second)
 		}
 
 	case "p":
