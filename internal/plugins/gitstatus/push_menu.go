@@ -31,16 +31,21 @@ func (p *Plugin) renderPushMenu() string {
 		{"u", "Push & set upstream (-u)"},
 	}
 
-	for _, opt := range options {
+	for i, opt := range options {
 		key := styles.KeyHint.Render(" " + opt.key + " ")
-		sb.WriteString(fmt.Sprintf("  %s %s\n", key, opt.label))
+		sb.WriteString(fmt.Sprintf("  %s  %s", key, opt.label))
+		if i < len(options)-1 {
+			sb.WriteString("\n\n") // Spacing between options
+		} else {
+			sb.WriteString("\n")
+		}
 	}
 
 	sb.WriteString("\n")
 	sb.WriteString(styles.Muted.Render("  Esc to cancel"))
 
-	// Create menu box
-	menuWidth := 36
+	// Create menu box - wide enough for longest option
+	menuWidth := 44
 	title := styles.Title.Render(" Push ")
 
 	menuContent := lipgloss.NewStyle().
