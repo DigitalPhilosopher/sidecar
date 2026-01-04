@@ -124,6 +124,10 @@ type Plugin struct {
 	stashCursor    int        // Selected stash index for mouse interaction
 	stashScrollOff int        // Scroll offset for stash list
 
+	// Syntax highlighting
+	syntaxHighlighter     *SyntaxHighlighter // Cached highlighter for current file
+	syntaxHighlighterFile string             // File the highlighter was created for
+
 	// Branch picker state
 	branches         []*Branch // List of branches
 	branchCursor     int       // Current cursor position
@@ -145,6 +149,20 @@ func New() *Plugin {
 		activePane:     PaneSidebar,
 		mouseHandler:   mouse.NewHandler(),
 	}
+}
+
+// getHighlighter returns a syntax highlighter for the given filename.
+// Caches the highlighter to avoid re-creating on every render.
+func (p *Plugin) getHighlighter(filename string) *SyntaxHighlighter {
+	if filename == "" {
+		return nil
+	}
+	if p.syntaxHighlighterFile == filename && p.syntaxHighlighter != nil {
+		return p.syntaxHighlighter
+	}
+	p.syntaxHighlighter = NewSyntaxHighlighter(filename)
+	p.syntaxHighlighterFile = filename
+	return p.syntaxHighlighter
 }
 
 // ID returns the plugin identifier.

@@ -204,6 +204,7 @@ func (p *Plugin) renderDiffModal() string {
 		var displayContent string
 		useDelta := p.externalTool != nil && p.externalTool.ShouldUseDelta()
 
+		highlighter := p.getHighlighter(p.diffFile)
 		if p.diffViewMode == DiffViewSideBySide {
 			// Prefer built-in side-by-side renderer for consistency
 			parsed := p.parsedDiff
@@ -211,7 +212,7 @@ func (p *Plugin) renderDiffModal() string {
 				parsed, _ = ParseUnifiedDiff(p.diffRaw)
 			}
 			if parsed != nil {
-				sb.WriteString(RenderSideBySide(parsed, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff))
+				sb.WriteString(RenderSideBySide(parsed, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter))
 				return p.wrapDiffContent(sb.String(), paneHeight)
 			} else if useDelta {
 				// Fall back to delta if parsing failed
@@ -224,7 +225,7 @@ func (p *Plugin) renderDiffModal() string {
 		} else {
 			// Unified view - prefer built-in renderer for consistency with inline diff pane
 			if p.parsedDiff != nil {
-				sb.WriteString(RenderLineDiff(p.parsedDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff))
+				sb.WriteString(RenderLineDiff(p.parsedDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter))
 				return p.wrapDiffContent(sb.String(), paneHeight)
 			} else if useDelta && p.diffContent != p.diffRaw {
 				// Fall back to delta if parsing failed
@@ -348,6 +349,7 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 	}
 
 	// Render diff based on view mode
+	highlighter := p.getHighlighter(p.diffFile)
 	var diffContent string
 	if p.diffViewMode == DiffViewSideBySide {
 		parsed := p.parsedDiff
@@ -355,11 +357,11 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 			parsed, _ = ParseUnifiedDiff(p.diffRaw)
 		}
 		if parsed != nil {
-			diffContent = RenderSideBySide(parsed, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff)
+			diffContent = RenderSideBySide(parsed, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter)
 		}
 	} else {
 		if p.parsedDiff != nil {
-			diffContent = RenderLineDiff(p.parsedDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff)
+			diffContent = RenderLineDiff(p.parsedDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter)
 		}
 	}
 

@@ -47,7 +47,8 @@ var (
 
 // RenderLineDiff renders a parsed diff in unified line-by-line format with line numbers.
 // horizontalOffset scrolls the content horizontally (0 = no scroll).
-func RenderLineDiff(diff *ParsedDiff, width, startLine, maxLines, horizontalOffset int) string {
+// highlighter is optional - if nil, no syntax highlighting is applied.
+func RenderLineDiff(diff *ParsedDiff, width, startLine, maxLines, horizontalOffset int, highlighter *SyntaxHighlighter) string {
 	if diff == nil || diff.Binary {
 		if diff != nil && diff.Binary {
 			return styles.Muted.Render(" Binary file differs")
@@ -123,7 +124,7 @@ func RenderLineDiff(diff *ParsedDiff, width, startLine, maxLines, horizontalOffs
 				lineNoStyle.Render(newNo))
 
 			// Render content with appropriate style and horizontal offset
-			content := renderDiffContentWithOffset(line, contentWidth, horizontalOffset)
+			content := renderDiffContentWithOffset(line, contentWidth, horizontalOffset, highlighter)
 
 			sb.WriteString(lineNos)
 			sb.WriteString(content)
@@ -140,7 +141,8 @@ func RenderLineDiff(diff *ParsedDiff, width, startLine, maxLines, horizontalOffs
 }
 
 // RenderSideBySide renders a parsed diff in side-by-side format.
-func RenderSideBySide(diff *ParsedDiff, width, startLine, maxLines, horizontalOffset int) string {
+// highlighter is optional - if nil, no syntax highlighting is applied.
+func RenderSideBySide(diff *ParsedDiff, width, startLine, maxLines, horizontalOffset int, highlighter *SyntaxHighlighter) string {
 	if diff == nil || diff.Binary {
 		if diff != nil && diff.Binary {
 			return styles.Muted.Render(" Binary file differs")
@@ -191,39 +193,26 @@ func RenderSideBySide(diff *ParsedDiff, width, startLine, maxLines, horizontalOf
 
 			// Left side (old)
 			leftLineNo := " "
-			leftContent := ""
-			leftStyle := styles.DiffContext
+			leftRendered := ""
 			if pair.left != nil {
 				if pair.left.OldLineNo > 0 {
 					leftLineNo = fmt.Sprintf("%d", pair.left.OldLineNo)
 				}
-				leftContent = applyHorizontalOffset(pair.left.Content, horizontalOffset)
-				leftContent = truncateLine(leftContent, contentWidth)
-				if pair.left.Type == LineRemove {
-					leftStyle = styles.DiffRemove
-				}
+				leftContent := applyHorizontalOffset(pair.left.Content, horizontalOffset)
+				leftRendered = renderSideBySideContent(leftContent, pair.left.Type, contentWidth, highlighter)
 			}
+			leftRendered = padToWidth(leftRendered, contentWidth)
 
 			// Right side (new)
 			rightLineNo := " "
-			rightContent := ""
-			rightStyle := styles.DiffContext
+			rightRendered := ""
 			if pair.right != nil {
 				if pair.right.NewLineNo > 0 {
 					rightLineNo = fmt.Sprintf("%d", pair.right.NewLineNo)
 				}
-				rightContent = applyHorizontalOffset(pair.right.Content, horizontalOffset)
-				rightContent = truncateLine(rightContent, contentWidth)
-				if pair.right.Type == LineAdd {
-					rightStyle = styles.DiffAdd
-				}
+				rightContent := applyHorizontalOffset(pair.right.Content, horizontalOffset)
+				rightRendered = renderSideBySideContent(rightContent, pair.right.Type, contentWidth, highlighter)
 			}
-
-			// Compose line - use MaxWidth to truncate, then pad manually for alignment
-			leftRendered := leftStyle.MaxWidth(contentWidth).Render(leftContent)
-			leftRendered = padToWidth(leftRendered, contentWidth)
-
-			rightRendered := rightStyle.MaxWidth(contentWidth).Render(rightContent)
 			rightRendered = padToWidth(rightRendered, contentWidth)
 
 			leftPanel := fmt.Sprintf("%s │%s",
@@ -309,8 +298,8 @@ func groupLinesForSideBySide(lines []DiffLine) []linePair {
 	return pairs
 }
 
-// renderDiffContentWithOffset renders line content with horizontal scroll and word-level highlighting.
-func renderDiffContentWithOffset(line DiffLine, maxWidth, horizontalOffset int) string {
+// renderDiffContentWithOffset renders line content with horizontal scroll, word-level and syntax highlighting.
+func renderDiffContentWithOffset(line DiffLine, maxWidth, horizontalOffset int, highlighter *SyntaxHighlighter) string {
 	// Apply horizontal offset first
 	content := line.Content
 	if horizontalOffset > 0 {
@@ -329,22 +318,22 @@ func renderDiffContentWithOffset(line DiffLine, maxWidth, horizontalOffset int) 
 			WordDiff:  nil, // Word diff doesn't work well with offset
 		}
 	}
-	return renderDiffContent(line, maxWidth)
+	return renderDiffContent(line, maxWidth, highlighter)
 }
 
-// renderDiffContent renders line content with word-level highlighting.
-func renderDiffContent(line DiffLine, maxWidth int) string {
-	var style lipgloss.Style
+// renderDiffContent renders line content with word-level and syntax highlighting.
+func renderDiffContent(line DiffLine, maxWidth int, highlighter *SyntaxHighlighter) string {
+	var baseStyle lipgloss.Style
 	switch line.Type {
 	case LineAdd:
-		style = styles.DiffAdd
+		baseStyle = styles.DiffAdd
 	case LineRemove:
-		style = styles.DiffRemove
+		baseStyle = styles.DiffRemove
 	default:
-		style = styles.DiffContext
+		baseStyle = styles.DiffContext
 	}
 
-	// If we have word diff data, use it
+	// If we have word diff data, use it (word diff takes priority over syntax)
 	if len(line.WordDiff) > 0 {
 		var sb strings.Builder
 		for _, segment := range line.WordDiff {
@@ -355,7 +344,7 @@ func renderDiffContent(line DiffLine, maxWidth int) string {
 					sb.WriteString(wordDiffRemoveStyle.Render(segment.Text))
 				}
 			} else {
-				sb.WriteString(style.Render(segment.Text))
+				sb.WriteString(baseStyle.Render(segment.Text))
 			}
 		}
 		content := sb.String()
@@ -363,16 +352,121 @@ func renderDiffContent(line DiffLine, maxWidth int) string {
 		if lipgloss.Width(line.Content) > maxWidth && maxWidth > 3 {
 			// Re-render truncated
 			truncated := truncateLine(line.Content, maxWidth)
-			return style.Render(truncated)
+			return baseStyle.Render(truncated)
 		}
 		return content
+	}
+
+	// Apply syntax highlighting if available
+	if highlighter != nil {
+		segments := highlighter.HighlightLine(line.Content)
+		if len(segments) > 0 {
+			var sb strings.Builder
+			for _, seg := range segments {
+				// Blend syntax style with diff line type
+				style := blendSyntaxWithDiff(seg.Style, line.Type)
+				sb.WriteString(style.Render(seg.Text))
+			}
+			result := sb.String()
+			// Truncate if needed
+			if lipgloss.Width(line.Content) > maxWidth && maxWidth > 3 {
+				truncated := truncateLine(line.Content, maxWidth)
+				return renderSyntaxHighlighted(truncated, line.Type, highlighter)
+			}
+			return result
+		}
 	}
 
 	content := line.Content
 	if lipgloss.Width(content) > maxWidth && maxWidth > 3 {
 		content = truncateLine(content, maxWidth)
 	}
-	return style.Render(content)
+	return baseStyle.Render(content)
+}
+
+// renderSideBySideContent renders content for side-by-side view with syntax highlighting.
+// Returns styled content that should then be padded with padToWidth for alignment.
+func renderSideBySideContent(content string, lineType LineType, maxWidth int, highlighter *SyntaxHighlighter) string {
+	var baseStyle lipgloss.Style
+	switch lineType {
+	case LineAdd:
+		baseStyle = styles.DiffAdd
+	case LineRemove:
+		baseStyle = styles.DiffRemove
+	default:
+		baseStyle = styles.DiffContext
+	}
+
+	// Truncate content first to fit maxWidth
+	if lipgloss.Width(content) > maxWidth && maxWidth > 3 {
+		content = truncateLine(content, maxWidth)
+	}
+
+	// Apply syntax highlighting if available
+	if highlighter != nil {
+		highlighted := renderSyntaxHighlighted(content, lineType, highlighter)
+		// Wrap with MaxWidth to ensure consistent width handling
+		// even though content was pre-truncated
+		return lipgloss.NewStyle().MaxWidth(maxWidth).Render(highlighted)
+	}
+
+	return baseStyle.MaxWidth(maxWidth).Render(content)
+}
+
+// renderSyntaxHighlighted renders content with syntax highlighting blended with diff style.
+func renderSyntaxHighlighted(content string, lineType LineType, highlighter *SyntaxHighlighter) string {
+	if highlighter == nil {
+		var style lipgloss.Style
+		switch lineType {
+		case LineAdd:
+			style = styles.DiffAdd
+		case LineRemove:
+			style = styles.DiffRemove
+		default:
+			style = styles.DiffContext
+		}
+		return style.Render(content)
+	}
+
+	segments := highlighter.HighlightLine(content)
+	var sb strings.Builder
+	for _, seg := range segments {
+		style := blendSyntaxWithDiff(seg.Style, lineType)
+		sb.WriteString(style.Render(seg.Text))
+	}
+	return sb.String()
+}
+
+// blendSyntaxWithDiff blends syntax highlighting style with diff line style.
+// For add/remove lines, we use the syntax foreground color but may adjust styling.
+func blendSyntaxWithDiff(syntaxStyle lipgloss.Style, lineType LineType) lipgloss.Style {
+	// Get any foreground color from syntax style
+	fg := syntaxStyle.GetForeground()
+
+	// Check if foreground is unset (NoColor{})
+	_, hasColor := fg.(lipgloss.NoColor)
+	noForeground := hasColor
+
+	switch lineType {
+	case LineAdd:
+		// For added lines: use syntax color if set, otherwise use DiffAdd color
+		if noForeground {
+			return styles.DiffAdd
+		}
+		return syntaxStyle
+	case LineRemove:
+		// For removed lines: use syntax color if set, otherwise use DiffRemove color
+		if noForeground {
+			return styles.DiffRemove
+		}
+		return syntaxStyle
+	default:
+		// Context lines: use syntax color if set, otherwise use DiffContext color
+		if noForeground {
+			return styles.DiffContext
+		}
+		return syntaxStyle
+	}
 }
 
 // truncateLine truncates a line to fit within maxWidth using visual width.

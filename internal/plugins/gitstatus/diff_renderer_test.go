@@ -6,7 +6,7 @@ import (
 )
 
 func TestRenderLineDiff_EmptyDiff(t *testing.T) {
-	result := RenderLineDiff(nil, 80, 0, 20, 0)
+	result := RenderLineDiff(nil, 80, 0, 20, 0, nil)
 	if !strings.Contains(result, "No diff content") {
 		t.Error("expected 'No diff content' message for nil diff")
 	}
@@ -14,7 +14,7 @@ func TestRenderLineDiff_EmptyDiff(t *testing.T) {
 
 func TestRenderLineDiff_BinaryFile(t *testing.T) {
 	diff := &ParsedDiff{Binary: true}
-	result := RenderLineDiff(diff, 80, 0, 20, 0)
+	result := RenderLineDiff(diff, 80, 0, 20, 0, nil)
 	if !strings.Contains(result, "Binary") {
 		t.Error("expected 'Binary' message for binary diff")
 	}
@@ -39,7 +39,7 @@ func TestRenderLineDiff_BasicOutput(t *testing.T) {
 		},
 	}
 
-	result := RenderLineDiff(diff, 80, 0, 20, 0)
+	result := RenderLineDiff(diff, 80, 0, 20, 0, nil)
 
 	if result == "" {
 		t.Error("RenderLineDiff returned empty string")
@@ -52,7 +52,7 @@ func TestRenderLineDiff_BasicOutput(t *testing.T) {
 }
 
 func TestRenderSideBySide_EmptyDiff(t *testing.T) {
-	result := RenderSideBySide(nil, 80, 0, 20, 0)
+	result := RenderSideBySide(nil, 80, 0, 20, 0, nil)
 	if !strings.Contains(result, "No diff content") {
 		t.Error("expected 'No diff content' message for nil diff")
 	}
@@ -60,7 +60,7 @@ func TestRenderSideBySide_EmptyDiff(t *testing.T) {
 
 func TestRenderSideBySide_BinaryFile(t *testing.T) {
 	diff := &ParsedDiff{Binary: true}
-	result := RenderSideBySide(diff, 80, 0, 20, 0)
+	result := RenderSideBySide(diff, 80, 0, 20, 0, nil)
 	if !strings.Contains(result, "Binary") {
 		t.Error("expected 'Binary' message for binary diff")
 	}
@@ -85,7 +85,7 @@ func TestRenderSideBySide_BasicOutput(t *testing.T) {
 		},
 	}
 
-	result := RenderSideBySide(diff, 100, 0, 20, 0)
+	result := RenderSideBySide(diff, 100, 0, 20, 0, nil)
 
 	if result == "" {
 		t.Error("RenderSideBySide returned empty string")
@@ -257,13 +257,13 @@ func TestRenderLineDiff_WithHorizontalOffset(t *testing.T) {
 	}
 
 	// Without offset - should show full content
-	result0 := RenderLineDiff(diff, 80, 0, 20, 0)
+	result0 := RenderLineDiff(diff, 80, 0, 20, 0, nil)
 	if !strings.Contains(result0, "0123456789") {
 		t.Error("expected full content when offset=0")
 	}
 
 	// With offset=5 - should skip first 5 chars
-	result5 := RenderLineDiff(diff, 80, 0, 20, 5)
+	result5 := RenderLineDiff(diff, 80, 0, 20, 5, nil)
 	if strings.Contains(result5, "01234") {
 		t.Error("offset=5 should hide first 5 chars")
 	}
@@ -272,7 +272,7 @@ func TestRenderLineDiff_WithHorizontalOffset(t *testing.T) {
 	}
 
 	// With very large offset - should handle gracefully
-	result100 := RenderLineDiff(diff, 80, 0, 20, 100)
+	result100 := RenderLineDiff(diff, 80, 0, 20, 100, nil)
 	if result100 == "" {
 		t.Error("large offset should not crash, should return something")
 	}
@@ -297,13 +297,13 @@ func TestRenderSideBySide_WithHorizontalOffset(t *testing.T) {
 	}
 
 	// Without offset
-	result0 := RenderSideBySide(diff, 120, 0, 20, 0)
+	result0 := RenderSideBySide(diff, 120, 0, 20, 0, nil)
 	if !strings.Contains(result0, "OLD") {
 		t.Error("expected OLD prefix when offset=0")
 	}
 
 	// With offset=3 - should skip first 3 chars
-	result3 := RenderSideBySide(diff, 120, 0, 20, 3)
+	result3 := RenderSideBySide(diff, 120, 0, 20, 3, nil)
 	if strings.Contains(result3, "OLD") || strings.Contains(result3, "NEW") {
 		t.Error("offset=3 should hide first 3 chars of each side")
 	}
@@ -324,13 +324,13 @@ func TestRenderDiffContentWithOffset_DisablesWordDiff(t *testing.T) {
 	}
 
 	// With offset=0, word diff should be preserved (handled in renderDiffContent)
-	result0 := renderDiffContentWithOffset(line, 80, 0)
+	result0 := renderDiffContentWithOffset(line, 80, 0, nil)
 	if result0 == "" {
 		t.Error("expected non-empty result")
 	}
 
 	// With offset>0, word diff should be disabled (set to nil internally)
-	result5 := renderDiffContentWithOffset(line, 80, 5)
+	result5 := renderDiffContentWithOffset(line, 80, 5, nil)
 	if result5 == "" {
 		t.Error("expected non-empty result with offset")
 	}

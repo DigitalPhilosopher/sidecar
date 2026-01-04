@@ -600,11 +600,12 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	}
 
 	// Render diff based on view mode
+	highlighter := p.getHighlighter(p.selectedDiffFile)
 	var diffContent string
 	if p.diffPaneViewMode == DiffViewSideBySide {
-		diffContent = RenderSideBySide(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll)
+		diffContent = RenderSideBySide(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter)
 	} else {
-		diffContent = RenderLineDiff(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll)
+		diffContent = RenderLineDiff(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter)
 	}
 	// Force truncate each line to prevent wrapping
 	lines := strings.Split(diffContent, "\n")
