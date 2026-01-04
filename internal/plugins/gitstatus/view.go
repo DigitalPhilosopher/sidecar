@@ -437,9 +437,9 @@ func (p *Plugin) renderDiffLine(line string) string {
 
 	switch {
 	case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
-		return styles.DiffAdd.Render(line)
+		return styles.DiffAdd.Background(styles.DiffAddBg).Render(line)
 	case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
-		return styles.DiffRemove.Render(line)
+		return styles.DiffRemove.Background(styles.DiffRemoveBg).Render(line)
 	case strings.HasPrefix(line, "@@"):
 		return styles.DiffHeader.Render(line)
 	case strings.HasPrefix(line, "diff "), strings.HasPrefix(line, "index "):
