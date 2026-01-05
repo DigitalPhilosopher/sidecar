@@ -408,10 +408,14 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.showDiagnostics {
 			m.activeContext = "diagnostics"
 			m.updateDiagnosticsButtonBounds()
-		} else {
-			m.updateButtonFocus = false
-			m.updateContext()
+			// Force version check in background (bypasses cache)
+			return m, tea.Batch(
+				version.ForceCheckAsync(m.currentVersion),
+				version.ForceCheckTdAsync(),
+			)
 		}
+		m.updateButtonFocus = false
+		m.updateContext()
 		return m, nil
 	case "ctrl+h":
 		m.showFooter = !m.showFooter

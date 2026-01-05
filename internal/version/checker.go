@@ -72,6 +72,29 @@ func CheckAsync(currentVersion string) tea.Cmd {
 	}
 }
 
+// ForceCheckAsync checks for updates, ignoring the cache.
+func ForceCheckAsync(currentVersion string) tea.Cmd {
+	return func() tea.Msg {
+		result := Check(currentVersion)
+		if result.Error == nil {
+			_ = SaveCache(&CacheEntry{
+				LatestVersion:  result.LatestVersion,
+				CurrentVersion: currentVersion,
+				CheckedAt:      time.Now(),
+				HasUpdate:      result.HasUpdate,
+			})
+		}
+		if result.HasUpdate {
+			return UpdateAvailableMsg{
+				CurrentVersion: currentVersion,
+				LatestVersion:  result.LatestVersion,
+				UpdateCommand:  updateCommand(result.LatestVersion),
+			}
+		}
+		return nil
+	}
+}
+
 // tdUpdateCommand generates the go install command for updating td.
 func tdUpdateCommand(version string) string {
 	return fmt.Sprintf(
@@ -124,6 +147,31 @@ func CheckTdAsync() tea.Cmd {
 			})
 		}
 
+		return TdVersionMsg{
+			Installed:      true,
+			CurrentVersion: tdVersion,
+			LatestVersion:  result.LatestVersion,
+			HasUpdate:      result.HasUpdate,
+		}
+	}
+}
+
+// ForceCheckTdAsync checks for td updates, ignoring the cache.
+func ForceCheckTdAsync() tea.Cmd {
+	return func() tea.Msg {
+		tdVersion := GetTdVersion()
+		if tdVersion == "" {
+			return TdVersionMsg{Installed: false}
+		}
+		result := CheckTd(tdVersion)
+		if result.Error == nil {
+			_ = SaveTdCache(&CacheEntry{
+				LatestVersion:  result.LatestVersion,
+				CurrentVersion: tdVersion,
+				CheckedAt:      time.Now(),
+				HasUpdate:      result.HasUpdate,
+			})
+		}
 		return TdVersionMsg{
 			Installed:      true,
 			CurrentVersion: tdVersion,
