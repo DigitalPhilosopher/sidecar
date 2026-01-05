@@ -7,6 +7,7 @@ Guide for creating new sidecar releases.
 - Clean working tree (`git status` shows no changes)
 - All tests passing (`go test ./...`)
 - GitHub CLI authenticated (`gh auth status`)
+- **No `replace` directives in go.mod** (`grep replace go.mod` should be empty)
 
 ## Release Process
 
@@ -22,19 +23,26 @@ Check current version:
 git tag -l | sort -V | tail -1
 ```
 
-### 2. Create Tag
+### 2. Verify go.mod
+
+**Critical**: Ensure no `replace` directives exist (they break `go install`):
+```bash
+grep replace go.mod && echo "ERROR: Remove replace directives before releasing!" && exit 1
+```
+
+### 3. Create Tag
 
 ```bash
 git tag vX.Y.Z -m "Brief description of release"
 ```
 
-### 3. Push Tag
+### 4. Push Tag
 
 ```bash
 git push origin vX.Y.Z
 ```
 
-### 4. Create GitHub Release
+### 5. Create GitHub Release
 
 ```bash
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
@@ -56,7 +64,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes ""
 # Then edit on GitHub
 ```
 
-### 5. Verify
+### 6. Verify
 
 ```bash
 # Check release exists
@@ -99,6 +107,7 @@ Dev versions (`devel`, `devel+hash`) skip the check.
 
 - [ ] Tests pass
 - [ ] Working tree clean
+- [ ] **No `replace` directives in go.mod**
 - [ ] Version number follows semver
 - [ ] Tag created and pushed
 - [ ] GitHub release created with notes
