@@ -7,6 +7,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/app"
 )
 
@@ -44,12 +45,33 @@ func (p *Plugin) yankTurnContent() tea.Cmd {
 
 // yankResumeCommand copies the CLI resume command to clipboard.
 func (p *Plugin) yankResumeCommand() tea.Cmd {
-	sessionID := p.getSelectedSessionID()
-	if sessionID == "" {
+	var session *adapter.Session
+
+	// If in message view, find session by selectedSession ID
+	if p.selectedSession != "" {
+		for i := range p.sessions {
+			if p.sessions[i].ID == p.selectedSession {
+				session = &p.sessions[i]
+				break
+			}
+		}
+	} else {
+		// Use cursor selection from session list
+		sessions := p.visibleSessions()
+		if p.cursor >= 0 && p.cursor < len(sessions) {
+			session = &sessions[p.cursor]
+		}
+	}
+
+	if session == nil {
 		return nil
 	}
 
-	cmd := fmt.Sprintf("claude --resume %s", sessionID)
+	cmd := resumeCommand(session)
+	if cmd == "" {
+		return nil
+	}
+
 	return func() tea.Msg {
 		if err := clipboard.WriteAll(cmd); err != nil {
 			return app.ToastMsg{Message: "Copy failed: " + err.Error(), Duration: 2 * time.Second, IsError: true}
