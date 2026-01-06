@@ -9,6 +9,7 @@ import (
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
+	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/version"
 )
 
@@ -270,6 +271,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.showQuitConfirm {
 		if msg.String() == "y" || msg.Type == tea.KeyEnter {
+			// Save active plugin before quitting
+			if activePlugin := m.ActivePlugin(); activePlugin != nil {
+				state.SetActivePlugin(m.ui.WorkDir, activePlugin.ID())
+			}
 			m.registry.Stop()
 			return m, tea.Quit
 		}

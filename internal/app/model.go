@@ -69,14 +69,27 @@ type Model struct {
 }
 
 // New creates a new application model.
-func New(reg *plugin.Registry, km *keymap.Registry, currentVersion, workDir string) Model {
+// initialPluginID optionally specifies which plugin to focus on startup (empty = first plugin).
+func New(reg *plugin.Registry, km *keymap.Registry, currentVersion, workDir, initialPluginID string) Model {
 	repoName := GetRepoName(workDir)
 	ui := NewUIState()
 	ui.WorkDir = workDir
+
+	// Determine initial active plugin index
+	activeIdx := 0
+	if initialPluginID != "" {
+		for i, p := range reg.Plugins() {
+			if p.ID() == initialPluginID {
+				activeIdx = i
+				break
+			}
+		}
+	}
+
 	return Model{
 		registry:       reg,
 		keymap:         km,
-		activePlugin:   0,
+		activePlugin:   activeIdx,
 		activeContext:  "global",
 		showFooter:     true,
 		palette:        palette.New(),

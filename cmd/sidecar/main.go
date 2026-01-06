@@ -119,7 +119,8 @@ func main() {
 
 	// Create and run application
 	currentVersion := effectiveVersion(Version)
-	model := app.New(registry, km, currentVersion, workDir)
+	initialPluginID := state.GetActivePlugin(workDir)
+	model := app.New(registry, km, currentVersion, workDir, initialPluginID)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion())
 
 	if _, err := p.Run(); err != nil {

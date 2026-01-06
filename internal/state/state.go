@@ -17,7 +17,8 @@ type State struct {
 	ConversationsSideWidth int `json:"conversationsSideWidth,omitempty"`
 
 	// Plugin-specific state (keyed by working directory path)
-	FileBrowser map[string]FileBrowserState `json:"fileBrowser,omitempty"`
+	FileBrowser  map[string]FileBrowserState `json:"fileBrowser,omitempty"`
+	ActivePlugin map[string]string           `json:"activePlugin,omitempty"`
 }
 
 // FileBrowserState holds persistent file browser state.
@@ -203,6 +204,30 @@ func SetFileBrowserState(workdir string, fbState FileBrowserState) error {
 		current.FileBrowser = make(map[string]FileBrowserState)
 	}
 	current.FileBrowser[workdir] = fbState
+	mu.Unlock()
+	return Save()
+}
+
+// GetActivePlugin returns the saved active plugin ID for a given working directory.
+func GetActivePlugin(workdir string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil || current.ActivePlugin == nil {
+		return ""
+	}
+	return current.ActivePlugin[workdir]
+}
+
+// SetActivePlugin saves the active plugin ID for a given working directory.
+func SetActivePlugin(workdir, pluginID string) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	if current.ActivePlugin == nil {
+		current.ActivePlugin = make(map[string]string)
+	}
+	current.ActivePlugin[workdir] = pluginID
 	mu.Unlock()
 	return Save()
 }
