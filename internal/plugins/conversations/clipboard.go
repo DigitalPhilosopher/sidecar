@@ -121,19 +121,14 @@ func (p *Plugin) getSelectedSessionID() string {
 
 // getCurrentTurn returns the turn under cursor based on current view mode.
 func (p *Plugin) getCurrentTurn() *Turn {
-	switch p.view {
-	case ViewMessageDetail:
+	// In detail mode, return the detail turn
+	if p.detailMode {
 		return p.detailTurn
-	case ViewMessages:
+	}
+	// When in messages pane, return the selected turn
+	if p.activePane == PaneMessages {
 		if p.turnCursor >= 0 && p.turnCursor < len(p.turns) {
 			return &p.turns[p.turnCursor]
-		}
-	default:
-		// In two-pane mode with main pane active
-		if p.twoPane && p.activePane == PaneMessages {
-			if p.turnCursor >= 0 && p.turnCursor < len(p.turns) {
-				return &p.turns[p.turnCursor]
-			}
 		}
 	}
 	return nil

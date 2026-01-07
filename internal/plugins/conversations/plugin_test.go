@@ -42,15 +42,22 @@ func TestPluginIcon(t *testing.T) {
 func TestFocusContext(t *testing.T) {
 	p := New()
 
-	// Default view
-	if ctx := p.FocusContext(); ctx != "conversations" {
-		t.Errorf("expected context 'conversations', got %q", ctx)
+	// Default: sidebar pane focused
+	p.activePane = PaneSidebar
+	if ctx := p.FocusContext(); ctx != "conversations-sidebar" {
+		t.Errorf("expected context 'conversations-sidebar', got %q", ctx)
 	}
 
-	// Message view
-	p.view = ViewMessages
-	if ctx := p.FocusContext(); ctx != "conversation-detail" {
-		t.Errorf("expected context 'conversation-detail', got %q", ctx)
+	// Messages pane focused
+	p.activePane = PaneMessages
+	if ctx := p.FocusContext(); ctx != "conversations-main" {
+		t.Errorf("expected context 'conversations-main', got %q", ctx)
+	}
+
+	// Detail mode
+	p.detailMode = true
+	if ctx := p.FocusContext(); ctx != "turn-detail" {
+		t.Errorf("expected context 'turn-detail', got %q", ctx)
 	}
 }
 
@@ -189,15 +196,16 @@ func TestSearchModeToggle(t *testing.T) {
 		{ID: "test-1", Name: "first-session"},
 		{ID: "test-2", Name: "second-session"},
 	}
+	p.activePane = PaneSidebar
 
 	// Initially not in search mode
 	if p.searchMode {
 		t.Error("expected searchMode to be false initially")
 	}
 
-	// FocusContext should be "conversations"
-	if ctx := p.FocusContext(); ctx != "conversations" {
-		t.Errorf("expected context 'conversations', got %q", ctx)
+	// FocusContext should be "conversations-sidebar"
+	if ctx := p.FocusContext(); ctx != "conversations-sidebar" {
+		t.Errorf("expected context 'conversations-sidebar', got %q", ctx)
 	}
 
 	// Toggle search mode on
@@ -871,8 +879,8 @@ func TestUpdateSearchEnterSelectsSession(t *testing.T) {
 	if p.searchMode {
 		t.Error("expected searchMode to be false after enter")
 	}
-	if p.view != ViewMessages {
-		t.Errorf("expected view to be ViewMessages, got %d", p.view)
+	if p.activePane != PaneMessages {
+		t.Errorf("expected activePane to be PaneMessages, got %d", p.activePane)
 	}
 	if p.selectedSession != "test-2" {
 		t.Errorf("expected selectedSession 'test-2', got %q", p.selectedSession)
@@ -966,7 +974,7 @@ func TestUpdateSearchEmptyResults(t *testing.T) {
 func TestThinkingBlockTogglePersistence(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
-	p.view = ViewMessages
+	p.activePane = PaneMessages
 	p.height = 20
 
 	// Create messages with thinking blocks - alternating roles to create separate turns
@@ -1045,7 +1053,7 @@ func TestThinkingBlockTogglePersistence(t *testing.T) {
 func TestThinkingBlockToggleNoThinkingBlocks(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
-	p.view = ViewMessages
+	p.activePane = PaneMessages
 	p.height = 20
 
 	// Create message without thinking blocks
@@ -1072,7 +1080,7 @@ func TestThinkingBlockToggleNoThinkingBlocks(t *testing.T) {
 func TestThinkingBlockResetOnSessionChange(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
-	p.view = ViewMessages
+	p.activePane = PaneMessages
 	p.height = 20
 	p.selectedSession = "session-1"
 
@@ -1097,14 +1105,10 @@ func TestThinkingBlockResetOnSessionChange(t *testing.T) {
 		t.Fatal("expected msg-1 thinking to be expanded")
 	}
 
-	// Go back to sessions view (press 'esc' or 'q')
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
-	_, _ = p.Update(escMsg)
+	// Change to a different session - this should reset expandedThinking
+	p.setSelectedSession("session-2")
 
 	// Verify state was reset
-	if p.view != ViewSessions {
-		t.Error("expected to be back in sessions view")
-	}
 	if len(p.expandedThinking) != 0 {
 		t.Errorf("expected expandedThinking to be reset, got %d entries", len(p.expandedThinking))
 	}
@@ -1114,7 +1118,7 @@ func TestThinkingBlockResetOnSessionChange(t *testing.T) {
 func TestThinkingBlockToggleMultipleIndependent(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
-	p.view = ViewMessages
+	p.activePane = PaneMessages
 	p.height = 20
 
 	// Create 5 alternating messages to create 5 separate turns
@@ -1277,8 +1281,7 @@ func TestTwoPaneNavigationRouting(t *testing.T) {
 		{ID: "test-3", Name: "Session 3"},
 	}
 	p.height = 30
-	p.width = 150 // >= 120, so twoPane should be enabled
-	p.twoPane = true
+	p.width = 150
 	p.activePane = PaneSidebar
 
 	// With sidebar focused, j should move cursor in session list
@@ -1317,7 +1320,6 @@ func TestTwoPaneFocusSwitching(t *testing.T) {
 	}
 	p.height = 30
 	p.width = 150
-	p.twoPane = true
 	p.activePane = PaneSidebar
 	p.selectedSession = "test-1"
 	p.messages = []adapter.Message{{ID: "msg-1", Role: "user"}}
@@ -1346,31 +1348,6 @@ func TestTwoPaneFocusSwitching(t *testing.T) {
 
 	if p.activePane != PaneSidebar {
 		t.Errorf("expected activePane to be PaneSidebar after tab, got %v", p.activePane)
-	}
-}
-
-// TestTwoPaneModeActivation tests that two-pane mode activates based on width.
-func TestTwoPaneModeActivation(t *testing.T) {
-	p := New()
-	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
-	p.sessions = []adapter.Session{{ID: "test-1", Name: "Session 1"}}
-
-	// Narrow width - should not enable two-pane
-	_ = p.View(100, 30)
-	if p.twoPane {
-		t.Error("expected twoPane to be false for width 100")
-	}
-
-	// Wide width - should enable two-pane
-	_ = p.View(120, 30)
-	if !p.twoPane {
-		t.Error("expected twoPane to be true for width 120")
-	}
-
-	// Very wide width - should enable two-pane
-	_ = p.View(200, 30)
-	if !p.twoPane {
-		t.Error("expected twoPane to be true for width 200")
 	}
 }
 
@@ -1416,7 +1393,6 @@ func TestMouseClickSessionItem(t *testing.T) {
 	}
 	p.width = 150
 	p.height = 30
-	p.twoPane = true
 	p.activePane = PaneSidebar
 	p.cursor = 0
 	p.selectedSession = "test-1"
@@ -1461,7 +1437,6 @@ func TestHandleMouseClickSessionItem(t *testing.T) {
 	}
 	p.width = 150
 	p.height = 30
-	p.twoPane = true
 	p.activePane = PaneMessages
 	p.cursor = 0
 	p.selectedSession = "test-1"
@@ -1496,7 +1471,6 @@ func TestHandleMouseDoubleClickSessionItem(t *testing.T) {
 	}
 	p.width = 150
 	p.height = 30
-	p.twoPane = true
 	p.activePane = PaneSidebar
 	p.cursor = 0
 	p.selectedSession = ""
@@ -1522,7 +1496,6 @@ func TestRegisterSessionHitRegions(t *testing.T) {
 	}
 	p.width = 150
 	p.height = 30
-	p.twoPane = true
 
 	// Render to trigger hit region registration
 	_ = p.View(p.width, p.height)
@@ -1572,7 +1545,6 @@ func TestScrollSidebarFunction(t *testing.T) {
 	}
 	p.width = 150
 	p.height = 15
-	p.twoPane = true
 	p.cursor = 5
 
 	// Test scroll down (positive delta)
