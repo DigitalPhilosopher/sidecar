@@ -202,6 +202,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpTextInput.Focus()
 			p.fileOpTextInput.CursorEnd()
 			p.fileOpError = ""
+			p.fileOpButtonFocus = 0
 		}
 
 	case "m":
@@ -215,6 +216,8 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpTextInput.Focus()
 			p.fileOpTextInput.CursorEnd()
 			p.fileOpError = ""
+			p.fileOpButtonFocus = 0
+			p.fileOpShowSuggestions = false
 		}
 
 	case "a":
@@ -227,6 +230,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpTextInput.Placeholder = "filename"
 			p.fileOpTextInput.Focus()
 			p.fileOpError = ""
+			p.fileOpButtonFocus = 0
 		}
 
 	case "A":
@@ -239,6 +243,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpTextInput.Placeholder = "dirname"
 			p.fileOpTextInput.Focus()
 			p.fileOpError = ""
+			p.fileOpButtonFocus = 0
 		}
 
 	case "d":
@@ -249,6 +254,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.fileOpTarget = node
 			p.fileOpConfirmDelete = true
 			p.fileOpError = ""
+			p.fileOpButtonFocus = 1 // Start with confirm button focused
 		}
 
 	case "y":
@@ -433,8 +439,16 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	// Handle delete confirmation mode
 	if p.fileOpConfirmDelete {
 		switch key {
-		case "y", "Y":
-			// Proceed with delete
+		case "y", "Y", "enter":
+			// Proceed with delete (y/Y or Enter when confirm focused)
+			if key == "enter" && p.fileOpButtonFocus == 2 {
+				// Cancel button focused, treat as cancel
+				p.fileOpMode = FileOpNone
+				p.fileOpTarget = nil
+				p.fileOpError = ""
+				p.fileOpConfirmDelete = false
+				return p, nil
+			}
 			p.fileOpConfirmDelete = false
 			return p, p.doDelete()
 		case "n", "N", "esc":
@@ -444,6 +458,22 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.fileOpError = ""
 			p.fileOpConfirmDelete = false
 			return p, nil
+		case "tab":
+			// Toggle between confirm (1) and cancel (2)
+			if p.fileOpButtonFocus == 1 {
+				p.fileOpButtonFocus = 2
+			} else {
+				p.fileOpButtonFocus = 1
+			}
+			return p, nil
+		case "shift+tab":
+			// Reverse toggle
+			if p.fileOpButtonFocus == 2 {
+				p.fileOpButtonFocus = 1
+			} else {
+				p.fileOpButtonFocus = 2
+			}
+			return p, nil
 		}
 		return p, nil
 	}
@@ -451,8 +481,14 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	// Handle confirmation mode for directory creation (during move)
 	if p.fileOpConfirmCreate {
 		switch key {
-		case "y", "Y":
-			// Create directory and proceed with move
+		case "y", "Y", "enter":
+			// Create directory and proceed with move (y/Y or Enter when confirm focused)
+			if key == "enter" && p.fileOpButtonFocus == 2 {
+				// Cancel button focused, return to edit mode
+				p.fileOpConfirmCreate = false
+				p.fileOpConfirmPath = ""
+				return p, nil
+			}
 			if err := os.MkdirAll(p.fileOpConfirmPath, 0755); err != nil {
 				p.fileOpError = fmt.Sprintf("failed to create directory: %v", err)
 				p.fileOpConfirmCreate = false
@@ -462,20 +498,29 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.fileOpConfirmCreate = false
 			p.fileOpConfirmPath = ""
 			return p.executeFileOp() // Retry the operation
-		case "esc":
-			// Cancel entire operation
-			p.fileOpMode = FileOpNone
-			p.fileOpTarget = nil
-			p.fileOpError = ""
+		case "n", "N", "esc":
+			// Cancel - return to edit mode
 			p.fileOpConfirmCreate = false
 			p.fileOpConfirmPath = ""
 			return p, nil
-		default:
-			// Any other key returns to edit mode
-			p.fileOpConfirmCreate = false
-			p.fileOpConfirmPath = ""
+		case "tab":
+			// Toggle between confirm (1) and cancel (2)
+			if p.fileOpButtonFocus == 1 {
+				p.fileOpButtonFocus = 2
+			} else {
+				p.fileOpButtonFocus = 1
+			}
+			return p, nil
+		case "shift+tab":
+			// Reverse toggle
+			if p.fileOpButtonFocus == 2 {
+				p.fileOpButtonFocus = 1
+			} else {
+				p.fileOpButtonFocus = 2
+			}
 			return p, nil
 		}
+		return p, nil
 	}
 
 	switch key {
@@ -484,18 +529,104 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.fileOpMode = FileOpNone
 		p.fileOpTarget = nil
 		p.fileOpError = ""
+		p.fileOpShowSuggestions = false
+		return p, nil
+
+	case "up", "ctrl+p":
+		// Navigate suggestions up (for move modal)
+		if p.fileOpMode == FileOpMove && p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+			p.fileOpSuggestionIdx--
+			if p.fileOpSuggestionIdx < -1 {
+				p.fileOpSuggestionIdx = len(p.fileOpSuggestions) - 1
+			}
+			return p, nil
+		}
+		return p, nil
+
+	case "down", "ctrl+n":
+		// Navigate suggestions down (for move modal)
+		if p.fileOpMode == FileOpMove && p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+			p.fileOpSuggestionIdx++
+			if p.fileOpSuggestionIdx >= len(p.fileOpSuggestions) {
+				p.fileOpSuggestionIdx = -1
+			}
+			return p, nil
+		}
+		return p, nil
+
+	case "tab":
+		// If move modal with suggestions showing, accept selection first
+		if p.fileOpMode == FileOpMove && p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+			// Accept selected suggestion or first one
+			idx := p.fileOpSuggestionIdx
+			if idx < 0 {
+				idx = 0
+			}
+			p.fileOpTextInput.SetValue(p.fileOpSuggestions[idx])
+			p.fileOpShowSuggestions = false
+			p.fileOpSuggestionIdx = -1
+			return p, nil
+		}
+		// Cycle focus: input(0) -> confirm(1) -> cancel(2) -> input(0)
+		p.fileOpButtonFocus = (p.fileOpButtonFocus + 1) % 3
+		if p.fileOpButtonFocus == 0 {
+			p.fileOpTextInput.Focus()
+		} else {
+			p.fileOpTextInput.Blur()
+		}
+		return p, nil
+
+	case "shift+tab":
+		// Reverse cycle
+		p.fileOpButtonFocus = (p.fileOpButtonFocus - 1 + 3) % 3
+		if p.fileOpButtonFocus == 0 {
+			p.fileOpTextInput.Focus()
+		} else {
+			p.fileOpTextInput.Blur()
+		}
 		return p, nil
 
 	case "enter":
-		// Execute file operation
+		// If cancel button focused, cancel operation
+		if p.fileOpButtonFocus == 2 {
+			p.fileOpMode = FileOpNone
+			p.fileOpTarget = nil
+			p.fileOpError = ""
+			p.fileOpShowSuggestions = false
+			return p, nil
+		}
+		// If suggestion is selected, accept it and don't execute yet
+		if p.fileOpMode == FileOpMove && p.fileOpShowSuggestions && p.fileOpSuggestionIdx >= 0 {
+			p.fileOpTextInput.SetValue(p.fileOpSuggestions[p.fileOpSuggestionIdx])
+			p.fileOpShowSuggestions = false
+			p.fileOpSuggestionIdx = -1
+			return p, nil
+		}
+		// Otherwise execute file operation
 		return p.executeFileOp()
 
 	default:
-		// Delegate all other keys to textinput
-		var cmd tea.Cmd
-		p.fileOpTextInput, cmd = p.fileOpTextInput.Update(msg)
-		p.fileOpError = "" // Clear error on input change
-		return p, cmd
+		// Only delegate to textinput if input is focused
+		if p.fileOpButtonFocus == 0 {
+			var cmd tea.Cmd
+			p.fileOpTextInput, cmd = p.fileOpTextInput.Update(msg)
+			p.fileOpError = "" // Clear error on input change
+
+			// Update suggestions for move modal on text change
+			if p.fileOpMode == FileOpMove {
+				query := p.fileOpTextInput.Value()
+				if len(query) > 0 {
+					p.fileOpSuggestions = p.getPathSuggestions(query)
+					p.fileOpSuggestionIdx = -1
+					p.fileOpShowSuggestions = len(p.fileOpSuggestions) > 0
+				} else {
+					p.fileOpSuggestions = nil
+					p.fileOpShowSuggestions = false
+				}
+			}
+			return p, cmd
+		}
+		return p, nil
 	}
 }
 

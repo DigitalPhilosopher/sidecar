@@ -22,6 +22,10 @@ const (
 	quickOpenMaxFiles   = 50000           // Max files to cache (prevents OOM on huge repos)
 	quickOpenMaxResults = 50              // Max matches to show
 	quickOpenTimeout    = 2 * time.Second // Max time to spend scanning
+
+	// Directory cache limits (for path auto-complete)
+	dirCacheMaxDirs    = 10000            // Max directories to cache
+	dirCacheMaxResults = 5                // Max suggestions to show
 )
 
 // FileOpMode represents the current file operation mode.
@@ -174,6 +178,13 @@ type Plugin struct {
 	fileOpConfirmCreate bool            // True when waiting for directory creation confirmation
 	fileOpConfirmPath   string          // The directory path to create
 	fileOpConfirmDelete bool            // True when waiting for delete confirmation
+	fileOpButtonFocus   int             // Button focus: 0=input, 1=confirm, 2=cancel
+
+	// Path auto-complete state (for move modal)
+	dirCache              []string // Cached directory paths
+	fileOpSuggestions     []string // Current filtered suggestions
+	fileOpSuggestionIdx   int      // Selected suggestion (-1 = none)
+	fileOpShowSuggestions bool     // Show suggestions dropdown
 
 	// Clipboard state (yank/paste)
 	clipboardPath  string // Relative path of yanked file/directory

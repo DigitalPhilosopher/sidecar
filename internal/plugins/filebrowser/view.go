@@ -897,12 +897,20 @@ func (p *Plugin) renderRenameModal() string {
 		sb.WriteString(styles.StatusDeleted.Render(p.fileOpError))
 	}
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[Enter]"))
-	sb.WriteString(" Confirm   ")
-	sb.WriteString(styles.KeyHint.Render("[Esc]"))
-	sb.WriteString(" Cancel")
+	sb.WriteString(confirmStyle.Render(" Confirm "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
 
 	return styles.ModalBox.Width(modalWidth).Render(sb.String())
 }
@@ -939,12 +947,20 @@ func (p *Plugin) renderDeleteModal() string {
 	sb.WriteString(icon + " ")
 	sb.WriteString(name)
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[y]"))
-	sb.WriteString(" Delete   ")
-	sb.WriteString(styles.KeyHint.Render("[n]"))
-	sb.WriteString(" Cancel")
+	sb.WriteString(confirmStyle.Render(" Delete "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
 
 	// Use a red border for delete warning
 	return lipgloss.NewStyle().
@@ -978,18 +994,41 @@ func (p *Plugin) renderMoveModal() string {
 	sb.WriteString("To: ")
 	sb.WriteString(p.fileOpTextInput.View())
 
+	// Path suggestions dropdown
+	if p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+		sb.WriteString("\n")
+		for i, suggestion := range p.fileOpSuggestions {
+			if i == p.fileOpSuggestionIdx {
+				sb.WriteString(styles.ListItemSelected.Render("  → " + suggestion))
+			} else {
+				sb.WriteString(styles.Muted.Render("    " + suggestion))
+			}
+			if i < len(p.fileOpSuggestions)-1 {
+				sb.WriteString("\n")
+			}
+		}
+	}
+
 	// Error message if present
 	if p.fileOpError != "" {
 		sb.WriteString("\n\n")
 		sb.WriteString(styles.StatusDeleted.Render(p.fileOpError))
 	}
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[Enter]"))
-	sb.WriteString(" Confirm   ")
-	sb.WriteString(styles.KeyHint.Render("[Esc]"))
-	sb.WriteString(" Cancel")
+	sb.WriteString(confirmStyle.Render(" Confirm "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
 
 	return styles.ModalBox.Width(modalWidth).Render(sb.String())
 }
@@ -1030,12 +1069,20 @@ func (p *Plugin) renderMkdirModal() string {
 		sb.WriteString(styles.StatusDeleted.Render(p.fileOpError))
 	}
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[Enter]"))
-	sb.WriteString(" Create   ")
-	sb.WriteString(styles.KeyHint.Render("[Esc]"))
-	sb.WriteString(" Cancel")
+	sb.WriteString(confirmStyle.Render(" Create "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
 
 	return styles.ModalBox.Width(modalWidth).Render(sb.String())
 }
@@ -1076,12 +1123,20 @@ func (p *Plugin) renderCreateFileModal() string {
 		sb.WriteString(styles.StatusDeleted.Render(p.fileOpError))
 	}
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[Enter]"))
-	sb.WriteString(" Create   ")
-	sb.WriteString(styles.KeyHint.Render("[Esc]"))
-	sb.WriteString(" Cancel")
+	sb.WriteString(confirmStyle.Render(" Create "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
 
 	return styles.ModalBox.Width(modalWidth).Render(sb.String())
 }
@@ -1109,12 +1164,20 @@ func (p *Plugin) renderCreateDirConfirmModal() string {
 	sb.WriteString("\n\n")
 	sb.WriteString("Create it?")
 
-	// Key hints
+	// Interactive buttons
+	confirmStyle := styles.Button
+	cancelStyle := styles.Button
+	if p.fileOpButtonFocus == 1 {
+		confirmStyle = styles.ButtonFocused
+	}
+	if p.fileOpButtonFocus == 2 {
+		cancelStyle = styles.ButtonFocused
+	}
+
 	sb.WriteString("\n\n")
-	sb.WriteString(styles.KeyHint.Render("[y]"))
-	sb.WriteString(" Yes   ")
-	sb.WriteString(styles.KeyHint.Render("[n]"))
-	sb.WriteString(" No")
+	sb.WriteString(confirmStyle.Render(" Yes "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" No "))
 
 	return styles.ModalBox.Width(modalWidth).Render(sb.String())
 }

@@ -103,6 +103,135 @@ When adding a modal:
    lipgloss.WithWhitespaceForeground(lipgloss.Color("#000000")),
    ```
 
+## Interactive Modal Buttons
+
+All modals with user actions should use interactive buttons instead of key hints like `[Enter] Confirm [Esc] Cancel`.
+
+### Button Rendering Pattern
+
+```go
+// In plugin struct, add:
+fileOpButtonFocus int // 0=input, 1=confirm, 2=cancel
+
+// In modal render function:
+confirmStyle := styles.Button
+cancelStyle := styles.Button
+if p.fileOpButtonFocus == 1 {
+    confirmStyle = styles.ButtonFocused
+}
+if p.fileOpButtonFocus == 2 {
+    cancelStyle = styles.ButtonFocused
+}
+
+sb.WriteString("\n\n")
+sb.WriteString(confirmStyle.Render(" Confirm "))
+sb.WriteString("  ")
+sb.WriteString(cancelStyle.Render(" Cancel "))
+```
+
+### Keyboard Navigation
+
+- **Tab**: Cycle focus between input field and buttons (input → confirm → cancel → input)
+- **Shift+Tab**: Reverse cycle
+- **Enter**: Execute focused button (or confirm from input)
+- **Esc**: Always cancels (global shortcut)
+
+```go
+case "tab":
+    p.fileOpButtonFocus = (p.fileOpButtonFocus + 1) % 3
+    if p.fileOpButtonFocus == 0 {
+        p.fileOpTextInput.Focus()
+    } else {
+        p.fileOpTextInput.Blur()
+    }
+    return p, nil
+```
+
+### Mouse Support
+
+Register hit regions for buttons during render:
+
+```go
+// In mouse.go, add region constants:
+const (
+    regionFileOpConfirm = "file-op-confirm"
+    regionFileOpCancel  = "file-op-cancel"
+)
+
+// Register hit regions (calculate positions based on modal layout)
+p.mouseHandler.HitMap.AddRect(regionFileOpConfirm, x, y, 10, 1, nil)
+p.mouseHandler.HitMap.AddRect(regionFileOpCancel, x+15, y, 10, 1, nil)
+```
+
+Handle clicks in the mouse handler:
+
+```go
+case regionFileOpConfirm:
+    return p.executeFileOp()
+case regionFileOpCancel:
+    return p.cancelFileOp()
+```
+
+## Path Auto-Complete (for path inputs)
+
+For modals accepting directory paths (like move), show fuzzy-matched suggestions.
+
+### State Fields
+
+```go
+// In plugin struct:
+dirCache              []string // Cached directory paths
+fileOpSuggestions     []string // Current filtered suggestions
+fileOpSuggestionIdx   int      // Selected suggestion (-1 = none)
+fileOpShowSuggestions bool     // Show suggestions dropdown
+```
+
+### Directory Cache
+
+Build a cache of directories (not files) for path suggestions:
+
+```go
+func (p *Plugin) buildDirCache() {
+    // Walk filesystem collecting only directories
+    // Skip .git, node_modules, etc.
+    // Respect gitignore
+}
+
+func (p *Plugin) getPathSuggestions(query string) []string {
+    if len(p.dirCache) == 0 {
+        p.buildDirCache()
+    }
+    matches := FuzzyFilter(p.dirCache, query, maxResults)
+    // Return matched paths
+}
+```
+
+### Suggestion Rendering
+
+```go
+// After input field in modal render:
+if p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+    sb.WriteString("\n")
+    for i, suggestion := range p.fileOpSuggestions {
+        if i == p.fileOpSuggestionIdx {
+            sb.WriteString(styles.ListItemSelected.Render("  → " + suggestion))
+        } else {
+            sb.WriteString(styles.Muted.Render("    " + suggestion))
+        }
+        if i < len(p.fileOpSuggestions)-1 {
+            sb.WriteString("\n")
+        }
+    }
+}
+```
+
+### Suggestion Navigation
+
+- **Up/Down** or **Ctrl+P/N**: Navigate suggestions (-1 = no selection)
+- **Tab**: Accept top/selected suggestion
+- **Enter** (with selection): Accept suggestion and stay in input
+- Update suggestions on each keystroke
+
 ## Style Constants
 
 ```go

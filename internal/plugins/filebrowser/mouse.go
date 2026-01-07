@@ -23,6 +23,10 @@ const (
 	regionSearchFile        = "search-file"         // File header (Data: file index)
 	regionSearchMatch       = "search-match"        // Match line (Data: searchMatchData)
 	regionSearchResults     = "search-results"      // Results pane for scrolling
+
+	// File operation modal buttons
+	regionFileOpConfirm = "file-op-confirm" // Confirm/Create/Delete/Yes button
+	regionFileOpCancel  = "file-op-cancel"  // Cancel/No button
 )
 
 // searchMatchData holds indices for a search match region.

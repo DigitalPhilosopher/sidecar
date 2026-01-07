@@ -782,6 +782,105 @@ func (p *Plugin) buildFileCache() {
 	sort.Strings(p.quickOpenFiles)
 }
 
+// buildDirCache walks the filesystem to build directory list for path auto-complete.
+// Similar to buildFileCache but collects directories instead of files.
+func (p *Plugin) buildDirCache() {
+	p.dirCache = nil
+
+	ctx, cancel := context.WithTimeout(context.Background(), quickOpenTimeout)
+	defer cancel()
+
+	count := 0
+	limited := false
+
+	err := filepath.WalkDir(p.ctx.WorkDir, func(path string, d fs.DirEntry, err error) error {
+		// Check timeout
+		select {
+		case <-ctx.Done():
+			limited = true
+			return filepath.SkipAll
+		default:
+		}
+
+		if err != nil {
+			return nil // Skip unreadable entries
+		}
+
+		// Get relative path
+		rel, err := filepath.Rel(p.ctx.WorkDir, path)
+		if err != nil {
+			return nil
+		}
+
+		// Skip root
+		if rel == "." {
+			return nil
+		}
+
+		// Only process directories
+		if !d.IsDir() {
+			return nil
+		}
+
+		name := d.Name()
+
+		// Skip common large/irrelevant directories
+		if name == ".git" || name == "node_modules" || name == "vendor" ||
+			name == ".next" || name == "dist" || name == "build" ||
+			name == "__pycache__" || name == ".venv" || name == "venv" ||
+			name == ".idea" || name == ".vscode" {
+			return filepath.SkipDir
+		}
+
+		// Check gitignore for directories
+		if p.tree != nil && p.tree.gitIgnore != nil {
+			if p.tree.gitIgnore.IsIgnored(rel, true) {
+				return filepath.SkipDir
+			}
+		}
+
+		// Check dir limit
+		if count >= dirCacheMaxDirs {
+			limited = true
+			return filepath.SkipAll
+		}
+
+		p.dirCache = append(p.dirCache, rel)
+		count++
+		return nil
+	})
+
+	if err != nil && err != filepath.SkipAll {
+		// Silently ignore scan errors for directory cache
+		_ = err
+	}
+	_ = limited // Ignore limited status for now
+
+	// Sort directories for consistent ordering
+	sort.Strings(p.dirCache)
+}
+
+// getPathSuggestions returns fuzzy-matched directory suggestions for the query.
+func (p *Plugin) getPathSuggestions(query string) []string {
+	if query == "" {
+		return nil
+	}
+
+	// Build cache if needed
+	if len(p.dirCache) == 0 {
+		p.buildDirCache()
+	}
+
+	// Use FuzzyFilter for matching
+	matches := FuzzyFilter(p.dirCache, query, dirCacheMaxResults)
+
+	var paths []string
+	for _, m := range matches {
+		paths = append(paths, m.Path)
+	}
+	return paths
+}
+
 // updateSearchMatches finds all nodes matching the search query.
 func (p *Plugin) updateSearchMatches() {
 	p.searchMatches = nil
