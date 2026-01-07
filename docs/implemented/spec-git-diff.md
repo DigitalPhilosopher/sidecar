@@ -6,28 +6,11 @@ Enhance the git plugin to show IDE-quality diffs with:
 
 - Line-by-line and side-by-side diff views (toggle between them)
 - Commit history browser
-- External tool integration (delta) with graceful fallback
+- Built-in syntax-highlighted diff rendering
 
 ## Implementation Phases
 
-### Phase 1: External Tool Detection & Integration
-
-**Files to create:**
-
-- `internal/plugins/gitstatus/external_tools.go` (~100 lines)
-
-**Tasks:**
-
-1. Detect if `delta` is installed via `exec.LookPath("delta")`
-2. Create `RenderDiff()` function to pipe raw diff through delta
-3. Show one-time recommendation banner if not installed: `"Tip: Install delta for enhanced diffs: brew install git-delta"`
-4. Add config option `ExternalTool: "auto" | "delta" | "builtin"`
-
-**Why delta first:** Gives immediate value with minimal code. Users get beautiful diffs instantly if delta is installed.
-
----
-
-### Phase 2: Structured Diff Parsing
+### Phase 1: Structured Diff Parsing
 
 **Files to create:**
 
@@ -62,7 +45,7 @@ type DiffLine struct {
 
 ---
 
-### Phase 3: Enhanced Diff Renderer (Built-in Fallback)
+### Phase 2: Enhanced Diff Renderer
 
 **Files to create:**
 
@@ -76,11 +59,11 @@ type DiffLine struct {
 
 1. `RenderLineDiff()` - Line-by-line with line numbers, word-level highlighting
 2. `RenderSideBySide()` - Split view using `lipgloss.JoinHorizontal()`
-3. Integrate syntax highlighting via `alecthomas/chroma` (optional stretch goal)
+3. Integrate syntax highlighting via `alecthomas/chroma`
 
 ---
 
-### Phase 4: Toggle Diff View Modes
+### Phase 3: Toggle Diff View Modes
 
 **Files to modify:**
 
@@ -95,12 +78,11 @@ type DiffLine struct {
 diffViewMode    DiffViewMode // LineDiff, SideDiff
 horizontalOff   int          // For side-by-side horizontal scroll
 parsedDiff      *ParsedDiff
-externalTool    *ExternalTool
 ```
 
 ---
 
-### Phase 5: Commit History Browser
+### Phase 4: Commit History Browser
 
 **Files to create:**
 
@@ -135,7 +117,7 @@ git show --stat --format="%H%n%an%n%ae%n%at%n%s%n%b" <hash>
 
 ---
 
-### Phase 6: View Mode State Machine
+### Phase 5: View Mode State Machine
 
 **Files to modify:**
 
@@ -167,7 +149,6 @@ Status --[h]--> History --[enter]--> CommitDetail --[d]--> Diff
 
 | File                          | Action | Lines                           |
 | ----------------------------- | ------ | ------------------------------- |
-| `gitstatus/external_tools.go` | CREATE | ~100                            |
 | `gitstatus/diff_parser.go`    | CREATE | ~300                            |
 | `gitstatus/diff_renderer.go`  | CREATE | ~400                            |
 | `gitstatus/history.go`        | CREATE | ~200                            |
@@ -197,16 +178,14 @@ Status --[h]--> History --[enter]--> CommitDetail --[d]--> Diff
 ```go
 require (
     github.com/sourcegraph/go-diff v0.7.0
-    github.com/alecthomas/chroma/v2 v2.12.0  // Optional for syntax hl
+    github.com/alecthomas/chroma/v2 v2.12.0
 )
 ```
 
 ---
 
-## Priority Order
+## Implementation Notes
 
-1. **Phase 1** (External tools) - Immediate value, minimal code
-2. **Phase 5+6** (History browser + state machine) - Core new feature
-3. **Phases 2-4** (Built-in diff rendering) - Fallback when delta not installed
-
-This order delivers value quickly while building toward full functionality.
+The built-in diff renderer is the only rendering path. External tool integration (delta)
+was removed in favor of the built-in renderer which provides consistent behavior across
+all environments.

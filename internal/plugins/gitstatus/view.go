@@ -206,13 +206,6 @@ func (p *Plugin) renderDiffModal() string {
 	sb.WriteString(styles.Muted.Render(strings.Repeat("━", contentWidth)))
 	sb.WriteString("\n")
 
-	// Show delta tip if not installed (one-time)
-	if p.externalTool != nil && p.externalTool.ShouldShowTip() {
-		tip := styles.Code.Render(p.externalTool.GetTipMessage())
-		sb.WriteString(tip)
-		sb.WriteString("\n\n")
-	}
-
 	// Content
 	if p.diffContent == "" {
 		sb.WriteString(styles.Muted.Render("Loading diff..."))
@@ -223,59 +216,37 @@ func (p *Plugin) renderDiffModal() string {
 			visibleLines = 1
 		}
 
-		// Determine content to display based on view mode and available tools
-		var displayContent string
-		useDelta := p.externalTool != nil && p.externalTool.ShouldUseDelta()
-
 		highlighter := p.getHighlighter(p.diffFile)
 		if p.diffViewMode == DiffViewSideBySide {
-			// Prefer built-in side-by-side renderer for consistency
 			parsed := p.parsedDiff
 			if parsed == nil {
 				parsed, _ = ParseUnifiedDiff(p.diffRaw)
 			}
 			if parsed != nil {
 				sb.WriteString(RenderSideBySide(parsed, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter))
-				return p.wrapDiffContent(sb.String(), paneHeight)
-			} else if useDelta {
-				// Fall back to delta if parsing failed
-				rendered, _ := p.externalTool.RenderWithDelta(p.diffRaw, true, contentWidth)
-				displayContent = rendered
 			} else {
 				sb.WriteString(styles.Muted.Render("Unable to parse diff for side-by-side view"))
-				return p.wrapDiffContent(sb.String(), paneHeight)
 			}
 		} else {
-			// Unified view - prefer built-in renderer for consistency with inline diff pane
+			// Unified view
 			if p.parsedDiff != nil {
 				sb.WriteString(RenderLineDiff(p.parsedDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter))
-				return p.wrapDiffContent(sb.String(), paneHeight)
-			} else if useDelta && p.diffContent != p.diffRaw {
-				// Fall back to delta if parsing failed
-				displayContent = p.diffContent
 			} else {
-				displayContent = p.diffRaw
+				// Fall back to raw diff rendering
+				lines := strings.Split(p.diffRaw, "\n")
+				start := p.diffScroll
+				if start >= len(lines) {
+					start = 0
+				}
+				end := start + visibleLines
+				if end > len(lines) {
+					end = len(lines)
+				}
+				for _, line := range lines[start:end] {
+					sb.WriteString(p.renderDiffLine(line))
+					sb.WriteString("\n")
+				}
 			}
-		}
-
-		// Render line-by-line content (delta output or raw)
-		lines := strings.Split(displayContent, "\n")
-		start := p.diffScroll
-		if start >= len(lines) {
-			start = 0
-		}
-		end := start + visibleLines
-		if end > len(lines) {
-			end = len(lines)
-		}
-
-		for _, line := range lines[start:end] {
-			if useDelta {
-				sb.WriteString(line)
-			} else {
-				sb.WriteString(p.renderDiffLine(line))
-			}
-			sb.WriteString("\n")
 		}
 	}
 

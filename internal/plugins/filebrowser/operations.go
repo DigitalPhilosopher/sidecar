@@ -791,8 +791,8 @@ func (p *Plugin) updateSearchMatches() {
 
 	query := strings.ToLower(p.searchQuery)
 
-	// Walk entire tree (not just visible nodes)
-	p.walkTree(p.tree.Root, func(node *FileNode) {
+	// Walk entire tree (not just visible nodes), excluding ignored files
+	p.walkTreeForSearch(p.tree.Root, func(node *FileNode) {
 		name := strings.ToLower(node.Name)
 		if strings.Contains(name, query) {
 			p.searchMatches = append(p.searchMatches, node)
@@ -824,23 +824,56 @@ func (p *Plugin) walkTree(node *FileNode, fn func(*FileNode)) {
 	}
 }
 
+// walkTreeForSearch recursively visits nodes, skipping ignored files/directories.
+func (p *Plugin) walkTreeForSearch(node *FileNode, fn func(*FileNode)) {
+	if node == nil {
+		return
+	}
+	for _, child := range node.Children {
+		// Skip ignored files and directories (like .git, node_modules, etc.)
+		if child.IsIgnored {
+			continue
+		}
+		fn(child)
+		if child.IsDir {
+			// Load children if not already loaded
+			if len(child.Children) == 0 {
+				_ = p.tree.loadChildren(child)
+			}
+			p.walkTreeForSearch(child, fn)
+		}
+	}
+}
+
 // jumpToSearchMatch navigates to the currently selected search match.
 func (p *Plugin) jumpToSearchMatch() {
 	if len(p.searchMatches) == 0 || p.searchCursor >= len(p.searchMatches) {
 		return
 	}
 
-	match := p.searchMatches[p.searchCursor]
+	matchPath := p.searchMatches[p.searchCursor].Path
+
+	// Find the node fresh from the current tree (in case tree was refreshed)
+	var currentNode *FileNode
+	p.walkTree(p.tree.Root, func(node *FileNode) {
+		if node.Path == matchPath {
+			currentNode = node
+		}
+	})
+
+	if currentNode == nil {
+		return
+	}
 
 	// Expand all parent directories to make the match visible
-	p.expandParents(match)
+	p.expandParents(currentNode)
 
 	// Reflatten the tree after expanding
 	p.tree.Flatten()
 
 	// Find the match in the flat list
 	for i, node := range p.tree.FlatList {
-		if node == match {
+		if node.Path == matchPath {
 			p.treeCursor = i
 			p.ensureTreeCursorVisible()
 			break
@@ -850,15 +883,24 @@ func (p *Plugin) jumpToSearchMatch() {
 
 // expandParents expands all ancestor directories of a node.
 func (p *Plugin) expandParents(node *FileNode) {
-	if node == nil || node.Parent == nil || node.Parent == p.tree.Root {
+	if node == nil || node.Parent == nil {
 		return
 	}
 
-	// Recursively expand parents first
+	// Don't try to expand the root itself
+	if node.Parent == p.tree.Root {
+		return
+	}
+
+	// Recursively expand parents first (going up the tree)
 	p.expandParents(node.Parent)
 
-	// Then expand this node's parent
+	// Then expand this node's parent directory
 	if node.Parent.IsDir && !node.Parent.IsExpanded {
+		// Load children if not already loaded
+		if len(node.Parent.Children) == 0 {
+			_ = p.tree.loadChildren(node.Parent)
+		}
 		node.Parent.IsExpanded = true
 	}
 }

@@ -97,9 +97,6 @@ type Plugin struct {
 	pushSuccessTime    time.Time // When to auto-clear success
 	pushMenuReturnMode ViewMode  // Mode to return to when push menu closes
 
-	// External tool integration
-	externalTool *ExternalTool
-
 	// View dimensions
 	width  int
 	height int
@@ -184,7 +181,6 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 	p.ctx = ctx
 	p.tree = NewFileTree(ctx.WorkDir)
-	p.externalTool = NewExternalTool(ToolModeAuto)
 
 	// Load saved diff view mode preference
 	if state.GetGitDiffMode() == "side-by-side" {
@@ -1244,11 +1240,9 @@ func (p *Plugin) listenForWatchEvents() tea.Cmd {
 	}
 }
 
-// loadDiff loads the diff for a file, rendering through delta if available.
+// loadDiff loads the diff for a file.
 func (p *Plugin) loadDiff(path string, staged bool, status FileStatus) tea.Cmd {
 	workDir := p.ctx.WorkDir
-	extTool := p.externalTool
-	width := p.width
 	return func() tea.Msg {
 		var rawDiff string
 		var err error
@@ -1263,14 +1257,7 @@ func (p *Plugin) loadDiff(path string, staged bool, status FileStatus) tea.Cmd {
 			return ErrorMsg{Err: err}
 		}
 
-		// Try to render with delta if available
-		content := rawDiff
-		if extTool != nil && extTool.ShouldUseDelta() {
-			rendered, _ := extTool.RenderWithDelta(rawDiff, false, width)
-			content = rendered
-		}
-
-		return DiffLoadedMsg{Content: content, Raw: rawDiff}
+		return DiffLoadedMsg{Content: rawDiff, Raw: rawDiff}
 	}
 }
 
@@ -1538,8 +1525,6 @@ func (p *Plugin) loadFolderDiff(entry *FileEntry) tea.Cmd {
 // loadFullFolderDiff loads a concatenated diff for full-screen view.
 func (p *Plugin) loadFullFolderDiff(entry *FileEntry) tea.Cmd {
 	workDir := p.ctx.WorkDir
-	extTool := p.externalTool
-	width := p.width
 	children := entry.Children
 	return func() tea.Msg {
 		rawDiff, err := GetFolderDiff(workDir, children)
@@ -1547,33 +1532,20 @@ func (p *Plugin) loadFullFolderDiff(entry *FileEntry) tea.Cmd {
 			return ErrorMsg{Err: err}
 		}
 
-		// Try to render with delta if available
-		content := rawDiff
-		if extTool != nil && extTool.ShouldUseDelta() {
-			rendered, _ := extTool.RenderWithDelta(rawDiff, false, width)
-			content = rendered
-		}
-
-		return DiffLoadedMsg{Content: content, Raw: rawDiff}
+		return DiffLoadedMsg{Content: rawDiff, Raw: rawDiff}
 	}
 }
 
 // loadCommitFileDiff loads diff for a file in a commit.
 func (p *Plugin) loadCommitFileDiff(hash, path string) tea.Cmd {
+	workDir := p.ctx.WorkDir
 	return func() tea.Msg {
-		rawDiff, err := GetCommitDiff(p.ctx.WorkDir, hash, path)
+		rawDiff, err := GetCommitDiff(workDir, hash, path)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
 
-		// Try to render with delta if available
-		content := rawDiff
-		if p.externalTool != nil && p.externalTool.ShouldUseDelta() {
-			rendered, _ := p.externalTool.RenderWithDelta(rawDiff, false, p.width)
-			content = rendered
-		}
-
-		return DiffLoadedMsg{Content: content, Raw: rawDiff}
+		return DiffLoadedMsg{Content: rawDiff, Raw: rawDiff}
 	}
 }
 

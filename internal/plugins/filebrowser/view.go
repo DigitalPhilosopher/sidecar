@@ -112,9 +112,10 @@ func (p *Plugin) renderNormalPanes() string {
 		previewBorder = styles.PanelActive
 	}
 
-	// Account for input bar if active (search or file op)
+	// Account for input bar if active (content search or file op)
+	// Note: tree search bar is rendered inside the tree pane, not here
 	inputBarHeight := 0
-	if p.searchMode || p.contentSearchMode || p.fileOpMode != FileOpNone {
+	if p.contentSearchMode || p.fileOpMode != FileOpNone {
 		inputBarHeight = 1
 		// Add extra line for error message if present
 		if p.fileOpMode != FileOpNone && p.fileOpError != "" {
@@ -159,10 +160,7 @@ func (p *Plugin) renderNormalPanes() string {
 	// Build final layout
 	var parts []string
 
-	// Add search bar if in tree search mode
-	if p.searchMode {
-		parts = append(parts, p.renderSearchBar())
-	}
+	// Note: tree search bar is rendered inside renderTreePane(), not here
 
 	// Add content search bar if in content search mode
 	if p.contentSearchMode {
@@ -271,8 +269,13 @@ func (p *Plugin) renderContentSearchBar() string {
 	return styles.ModalTitle.Render(searchLine)
 }
 
-// renderSearchBar renders the search input bar.
+// renderSearchBar renders the search input bar (legacy - for external use).
 func (p *Plugin) renderSearchBar() string {
+	return p.renderTreeSearchBar()
+}
+
+// renderTreeSearchBar renders the tree search bar inline within the tree pane.
+func (p *Plugin) renderTreeSearchBar() string {
 	cursor := "█"
 	matchInfo := ""
 	if len(p.searchMatches) > 0 {
@@ -281,8 +284,9 @@ func (p *Plugin) renderSearchBar() string {
 		matchInfo = " (no matches)"
 	}
 
-	searchLine := fmt.Sprintf(" / %s%s%s", p.searchQuery, cursor, matchInfo)
-	return styles.ModalTitle.Render(searchLine)
+	searchLine := fmt.Sprintf("/%s%s%s", p.searchQuery, cursor, matchInfo)
+	// Use a subtle style that fits inside the pane
+	return styles.StatusInProgress.Render(searchLine)
 }
 
 // renderFileOpBar renders the file operation input bar (move/rename/create/delete).
@@ -340,13 +344,36 @@ func (p *Plugin) renderTreePane(visibleHeight int) string {
 		sb.WriteString("  ")
 		sb.WriteString(styles.Muted.Render("[" + p.tree.SortMode.Label() + "]"))
 	}
-	sb.WriteString("\n\n")
+	sb.WriteString("\n")
+
+	// Search bar (if in search mode) - rendered inside the pane like conversations plugin
+	if p.searchMode {
+		searchLine := p.renderTreeSearchBar()
+		sb.WriteString(searchLine)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("\n") // Empty line when not searching
+	}
+
+	// In search mode, show filtered results instead of full tree
+	if p.searchMode {
+		if len(p.searchMatches) > 0 {
+			return p.renderSearchResults(&sb, visibleHeight)
+		} else if p.searchQuery != "" {
+			// Show "no matches" when query exists but no results
+			sb.WriteString(styles.Muted.Render("No matching files"))
+			return sb.String()
+		}
+		// Empty query - fall through to show full tree
+	}
 
 	if p.tree == nil || p.tree.Len() == 0 {
 		sb.WriteString(styles.Muted.Render("No files"))
 		return sb.String()
 	}
 
+	// visibleHeight already accounts for header (2 lines) in renderNormalPanes()
+	// So we use it directly - no additional subtraction needed
 	end := p.treeScrollOff + visibleHeight
 	if end > p.tree.Len() {
 		end = p.tree.Len()
@@ -364,6 +391,56 @@ func (p *Plugin) renderTreePane(visibleHeight int) string {
 
 		sb.WriteString(line)
 		// Don't add newline after last line
+		if i < end-1 {
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// renderSearchResults renders the filtered search results list.
+func (p *Plugin) renderSearchResults(sb *strings.Builder, visibleHeight int) string {
+	maxWidth := p.treeWidth - 4
+
+	// Calculate scroll offset for search results
+	searchScrollOff := 0
+	if p.searchCursor >= visibleHeight {
+		searchScrollOff = p.searchCursor - visibleHeight + 1
+	}
+
+	end := searchScrollOff + visibleHeight
+	if end > len(p.searchMatches) {
+		end = len(p.searchMatches)
+	}
+
+	for i := searchScrollOff; i < end; i++ {
+		node := p.searchMatches[i]
+		selected := i == p.searchCursor
+
+		// Show full path for search results (more useful than just name)
+		displayPath := node.Path
+		if len(displayPath) > maxWidth-2 {
+			displayPath = "…" + displayPath[len(displayPath)-maxWidth+3:]
+		}
+
+		if selected {
+			// Full-width highlight for selected item
+			if len(displayPath) < maxWidth {
+				displayPath += strings.Repeat(" ", maxWidth-len(displayPath))
+			}
+			sb.WriteString(styles.ListItemSelected.Render(displayPath))
+		} else {
+			// Style based on file type
+			if node.IsDir {
+				sb.WriteString(styles.FileBrowserDir.Render(displayPath))
+			} else if node.IsIgnored {
+				sb.WriteString(styles.FileBrowserIgnored.Render(displayPath))
+			} else {
+				sb.WriteString(styles.FileBrowserFile.Render(displayPath))
+			}
+		}
+
 		if i < end-1 {
 			sb.WriteString("\n")
 		}

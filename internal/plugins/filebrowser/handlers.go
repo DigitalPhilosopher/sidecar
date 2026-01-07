@@ -774,8 +774,21 @@ func (p *Plugin) handleSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "enter":
 		// Jump to selected match and exit search
-		if len(p.searchMatches) > 0 {
+		if len(p.searchMatches) > 0 && p.searchCursor < len(p.searchMatches) {
+			match := p.searchMatches[p.searchCursor]
 			p.jumpToSearchMatch()
+			p.searchMode = false
+			// If it's a file, load preview
+			if !match.IsDir {
+				p.previewFile = match.Path
+				p.previewScroll = 0
+				p.previewLines = nil
+				p.previewError = nil
+				p.isBinary = false
+				p.isTruncated = false
+				return p, LoadPreview(p.ctx.WorkDir, match.Path)
+			}
+			return p, nil
 		}
 		p.searchMode = false
 
@@ -808,9 +821,10 @@ func (p *Plugin) handleSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 // visibleContentHeight returns the number of lines available for content.
 func (p *Plugin) visibleContentHeight() int {
-	// height - footer (1) - search bar (0 or 1) - pane border (2) - header (2)
+	// height - footer (1) - content search bar (0 or 1) - pane border (2) - header (2)
+	// Note: tree search bar is inside the pane header, not counted separately
 	searchBar := 0
-	if p.searchMode || p.contentSearchMode {
+	if p.contentSearchMode {
 		searchBar = 1
 	}
 	h := p.height - 1 - searchBar - 2 - 2
