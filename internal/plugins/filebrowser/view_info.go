@@ -1,7 +1,6 @@
 package filebrowser
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,12 +64,7 @@ func (p *Plugin) renderInfoModalContent() string {
 	var sb strings.Builder
 
 	// Title area
-	icon := "📄"
-	if isDir {
-		icon = "📁"
-	}
-
-	title := styles.ModalTitle.Render(fmt.Sprintf("%s %s", icon, name))
+	title := styles.ModalTitle.Render(name)
 	sb.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(50).Render(title))
 	sb.WriteString("\n\n")
 
