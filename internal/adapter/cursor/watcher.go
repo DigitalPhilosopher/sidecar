@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -39,11 +40,24 @@ func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
 
 	go func() {
 		defer watcher.Close()
-		defer close(events)
 
 		// Debounce timer
 		var debounceTimer *time.Timer
 		debounceDelay := 100 * time.Millisecond
+
+		// Protect against sending to closed channel from timer callback
+		var closed bool
+		var mu sync.Mutex
+
+		defer func() {
+			mu.Lock()
+			closed = true
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			mu.Unlock()
+			close(events)
+		}()
 
 		for {
 			select {
@@ -58,11 +72,19 @@ func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
 					// Capture event for closure to avoid race condition
 					capturedEvent := event
 
+					mu.Lock()
 					// Debounce rapid events
 					if debounceTimer != nil {
 						debounceTimer.Stop()
 					}
 					debounceTimer = time.AfterFunc(debounceDelay, func() {
+						mu.Lock()
+						defer mu.Unlock()
+
+						if closed {
+							return
+						}
+
 						// Extract session ID from path (use capturedEvent to avoid race)
 						sessionID := filepath.Base(filepath.Dir(capturedEvent.Name))
 
@@ -87,6 +109,7 @@ func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
 							// Channel full, drop event
 						}
 					})
+					mu.Unlock()
 				} else if event.Op&fsnotify.Create != 0 {
 					// New session directory created, add to watcher
 					info, err := os.Stat(event.Name)

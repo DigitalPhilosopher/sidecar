@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -26,11 +27,24 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 
 	go func() {
 		defer watcher.Close()
-		defer close(events)
 
 		var debounceTimer *time.Timer
 		var lastEvent fsnotify.Event
 		debounceDelay := 100 * time.Millisecond
+
+		// Protect against sending to closed channel from timer callback
+		var closed bool
+		var mu sync.Mutex
+
+		defer func() {
+			mu.Lock()
+			closed = true
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			mu.Unlock()
+			close(events)
+		}()
 
 		for {
 			select {
@@ -50,11 +64,19 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 					continue
 				}
 
+				mu.Lock()
 				lastEvent = event
 				if debounceTimer != nil {
 					debounceTimer.Stop()
 				}
 				debounceTimer = time.AfterFunc(debounceDelay, func() {
+					mu.Lock()
+					defer mu.Unlock()
+
+					if closed {
+						return
+					}
+
 					sessionID := strings.TrimSuffix(filepath.Base(lastEvent.Name), ".jsonl")
 					var eventType adapter.EventType
 					switch {
@@ -73,6 +95,7 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 					default:
 					}
 				})
+				mu.Unlock()
 
 			case _, ok := <-watcher.Errors:
 				if !ok {

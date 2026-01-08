@@ -2,6 +2,7 @@ package warp
 
 import (
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -28,10 +29,23 @@ func NewWatcher(dbPath string) (<-chan adapter.Event, error) {
 
 	go func() {
 		defer watcher.Close()
-		defer close(events)
 
 		var debounceTimer *time.Timer
 		debounceDelay := 100 * time.Millisecond
+
+		// Protect against sending to closed channel from timer callback
+		var closed bool
+		var mu sync.Mutex
+
+		defer func() {
+			mu.Lock()
+			closed = true
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			mu.Unlock()
+			close(events)
+		}()
 
 		for {
 			select {
@@ -49,11 +63,19 @@ func NewWatcher(dbPath string) (<-chan adapter.Event, error) {
 					continue
 				}
 
+				mu.Lock()
 				// Debounce rapid writes
 				if debounceTimer != nil {
 					debounceTimer.Stop()
 				}
 				debounceTimer = time.AfterFunc(debounceDelay, func() {
+					mu.Lock()
+					defer mu.Unlock()
+
+					if closed {
+						return
+					}
+
 					select {
 					case events <- adapter.Event{
 						Type: adapter.EventSessionUpdated,
@@ -62,6 +84,7 @@ func NewWatcher(dbPath string) (<-chan adapter.Event, error) {
 						// Channel full, skip
 					}
 				})
+				mu.Unlock()
 
 			case _, ok := <-watcher.Errors:
 				if !ok {

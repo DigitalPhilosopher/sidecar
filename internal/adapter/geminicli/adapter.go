@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/marcus/sidecar/internal/adapter"
@@ -23,6 +24,7 @@ const (
 type Adapter struct {
 	tmpDir       string
 	sessionIndex map[string]string // sessionID -> file path cache
+	indexMu      sync.RWMutex      // protects sessionIndex
 }
 
 // New creates a new Gemini CLI adapter.
@@ -85,7 +87,9 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 
 	sessions := make([]adapter.Session, 0, len(entries))
 	// Reset cache on full session enumeration
+	a.indexMu.Lock()
 	a.sessionIndex = make(map[string]string)
+	a.indexMu.Unlock()
 	for _, e := range entries {
 		if !strings.HasPrefix(e.Name(), "session-") || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -98,7 +102,9 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		}
 
 		// Cache session path for fast lookup
+		a.indexMu.Lock()
 		a.sessionIndex[meta.SessionID] = path
+		a.indexMu.Unlock()
 
 		// Use first user message as name, fallback to short ID
 		name := ""
@@ -259,7 +265,10 @@ func (a *Adapter) chatsDir(projectRoot string) string {
 // sessionFilePath finds the session file for a given session ID.
 func (a *Adapter) sessionFilePath(sessionID string) string {
 	// Check cache first
-	if path, ok := a.sessionIndex[sessionID]; ok {
+	a.indexMu.RLock()
+	path, ok := a.sessionIndex[sessionID]
+	a.indexMu.RUnlock()
+	if ok {
 		return path
 	}
 
@@ -289,10 +298,9 @@ func (a *Adapter) sessionFilePath(sessionID string) string {
 			}
 			if session.SessionID == sessionID {
 				// Cache for future lookups
-				if a.sessionIndex == nil {
-					a.sessionIndex = make(map[string]string)
-				}
+				a.indexMu.Lock()
 				a.sessionIndex[sessionID] = path
+				a.indexMu.Unlock()
 				return path
 			}
 		}
