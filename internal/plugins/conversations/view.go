@@ -1468,14 +1468,14 @@ func (p *Plugin) renderConversationFlow(contentWidth, height int) []string {
 		msgLines := p.renderMessageBubble(msg, msgIdx, contentWidth)
 		allLines = append(allLines, msgLines...)
 
-		// Store position info for scroll calculations (all messages, before scroll window)
+		allLines = append(allLines, "") // Gap between messages
+
+		// Store position info for scroll calculations (include gap line in count)
 		p.msgLinePositions = append(p.msgLinePositions, msgLinePos{
 			MsgIdx:    msgIdx,
 			StartLine: startLine,
-			LineCount: len(msgLines),
+			LineCount: len(msgLines) + 1, // +1 for gap line
 		})
-
-		allLines = append(allLines, "") // Gap between messages
 	}
 
 	// Apply scroll offset
@@ -1739,15 +1739,18 @@ func (p *Plugin) renderToolUseBlock(block adapter.ContentBlock, maxWidth int) []
 			lines = append(lines, styles.Muted.Render("  "+line))
 		}
 	} else if block.ToolOutput != "" {
-		// Collapsed: show first line of output as preview
+		// Collapsed: show first meaningful line of output as preview
+		// Skip lines that are just JSON structural chars (not informative)
 		outputLines := strings.Split(block.ToolOutput, "\n")
 		preview := ""
 		for _, line := range outputLines {
 			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				preview = trimmed
-				break
+			// Skip empty lines and single-char JSON structure
+			if trimmed == "" || trimmed == "{" || trimmed == "[" || trimmed == "}" || trimmed == "]" {
+				continue
 			}
+			preview = trimmed
+			break
 		}
 		if preview != "" {
 			// Show first meaningful line as preview

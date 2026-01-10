@@ -310,6 +310,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.turns = GroupMessagesIntoTurns(msg.Messages)
 		p.turnCursor = 0
 		p.turnScrollOff = 0
+		// Snap messageCursor to first visible message (skip tool-result-only)
+		visibleIndices := p.visibleMessageIndices()
+		if len(visibleIndices) > 0 {
+			p.messageCursor = visibleIndices[0]
+		}
 		p.hasMore = len(msg.Messages) >= p.pageSize
 		// Compute session summary
 		var duration time.Duration

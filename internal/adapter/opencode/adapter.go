@@ -152,47 +152,43 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 }
 
 // Messages returns all messages for the given session.
+// Uses batch reading to minimize file I/O overhead.
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	messageDir := filepath.Join(a.storageDir, "message", sessionID)
-	entries, err := os.ReadDir(messageDir)
+
+	// Batch read all message files at once
+	msgMap, err := a.batchReadMessages(messageDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
+	if len(msgMap) == 0 {
+		return nil, nil
+	}
 
-	var messages []adapter.Message
+	// Collect all message IDs for batch part loading
+	messageIDs := make([]string, 0, len(msgMap))
+	for id := range msgMap {
+		messageIDs = append(messageIDs, id)
+	}
 
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
+	// Batch load all parts for all messages at once
+	partsMap := a.batchLoadAllParts(messageIDs)
 
-		path := filepath.Join(messageDir, e.Name())
-		msg, err := a.parseMessageFile(path)
-		if err != nil {
-			continue
-		}
-
-		// Skip non-user/assistant messages
-		if msg.Role != "user" && msg.Role != "assistant" {
-			continue
-		}
-
-		// Load parts for this message
-		content, toolUses, thinkingBlocks, fileRefs, patchFiles := a.loadParts(msg.ID)
+	// Build adapter messages using pre-loaded data
+	messages := make([]adapter.Message, 0, len(msgMap))
+	for _, msg := range msgMap {
+		parts := partsMap[msg.ID]
 
 		// Build content string
 		var contentParts []string
-		if content != "" {
-			contentParts = append(contentParts, content)
+		if parts.content != "" {
+			contentParts = append(contentParts, parts.content)
 		}
-		if len(fileRefs) > 0 {
-			contentParts = append(contentParts, fmt.Sprintf("[files: %s]", strings.Join(fileRefs, ", ")))
+		if len(parts.fileRefs) > 0 {
+			contentParts = append(contentParts, fmt.Sprintf("[files: %s]", strings.Join(parts.fileRefs, ", ")))
 		}
-		if len(patchFiles) > 0 {
-			contentParts = append(contentParts, fmt.Sprintf("[edited: %d files]", len(patchFiles)))
+		if len(parts.patchFiles) > 0 {
+			contentParts = append(contentParts, fmt.Sprintf("[edited: %d files]", len(parts.patchFiles)))
 		}
 
 		// Get model from either ModelID field or Model.ModelID
@@ -207,8 +203,8 @@ func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 			Content:        strings.Join(contentParts, "\n"),
 			Timestamp:      msg.Time.CreatedTime(),
 			Model:          model,
-			ToolUses:       toolUses,
-			ThinkingBlocks: thinkingBlocks,
+			ToolUses:       parts.toolUses,
+			ThinkingBlocks: parts.thinkingBlocks,
 		}
 
 		// Add token usage
@@ -545,6 +541,125 @@ func (a *Adapter) loadParts(messageID string) (content string, toolUses []adapte
 
 	content = strings.Join(textParts, "\n")
 	return
+}
+
+// parsedParts holds the aggregated parts data for a message.
+type parsedParts struct {
+	content        string
+	toolUses       []adapter.ToolUse
+	thinkingBlocks []adapter.ThinkingBlock
+	fileRefs       []string
+	patchFiles     []string
+}
+
+// batchReadMessages reads all message files from a directory and parses them.
+// Returns a map of messageID -> Message for efficient lookup.
+func (a *Adapter) batchReadMessages(messageDir string) (map[string]*Message, error) {
+	entries, err := os.ReadDir(messageDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	result := make(map[string]*Message, len(entries))
+
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+
+		path := filepath.Join(messageDir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		var msg Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		// Only keep user/assistant messages
+		if msg.Role == "user" || msg.Role == "assistant" {
+			result[msg.ID] = &msg
+		}
+	}
+
+	return result, nil
+}
+
+// batchLoadAllParts reads all parts for all given message IDs in a single pass.
+// Returns a map of messageID -> parsedParts.
+func (a *Adapter) batchLoadAllParts(messageIDs []string) map[string]parsedParts {
+	result := make(map[string]parsedParts, len(messageIDs))
+	partBaseDir := filepath.Join(a.storageDir, "part")
+
+	for _, msgID := range messageIDs {
+		partDir := filepath.Join(partBaseDir, msgID)
+		entries, err := os.ReadDir(partDir)
+		if err != nil {
+			result[msgID] = parsedParts{}
+			continue
+		}
+
+		var textParts []string
+		var toolUses []adapter.ToolUse
+		var thinkingBlocks []adapter.ThinkingBlock
+		var fileRefs []string
+		var patchFiles []string
+
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+
+			path := filepath.Join(partDir, e.Name())
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+
+			var part Part
+			if err := json.Unmarshal(data, &part); err != nil {
+				continue
+			}
+
+			switch part.Type {
+			case "text":
+				if part.Text != "" {
+					textParts = append(textParts, part.Text)
+				}
+			case "tool":
+				tu := adapter.ToolUse{
+					ID:   part.CallID,
+					Name: part.Tool,
+				}
+				if part.State != nil {
+					tu.Input = ToolInputString(part.State.Input)
+					tu.Output = ToolOutputString(part.State.Output)
+				}
+				toolUses = append(toolUses, tu)
+			case "file":
+				if part.Filename != "" {
+					fileRefs = append(fileRefs, part.Filename)
+				}
+			case "patch":
+				patchFiles = append(patchFiles, part.Files...)
+			}
+		}
+
+		result[msgID] = parsedParts{
+			content:        strings.Join(textParts, "\n"),
+			toolUses:       toolUses,
+			thinkingBlocks: thinkingBlocks,
+			fileRefs:       fileRefs,
+			patchFiles:     patchFiles,
+		}
+	}
+
+	return result
 }
 
 // calculateCost estimates cost based on model and token usage.
