@@ -299,14 +299,12 @@ func (p *Plugin) renderFileOpBar() string {
 		if p.fileOpTarget.IsDir {
 			itemType = "directory"
 		}
-		confirmLine := fmt.Sprintf(" Delete %s '%s'? [y]es / [n]o", itemType, p.fileOpTarget.Name)
-		return styles.ModalTitle.Render(confirmLine)
+		return p.renderFileOpConfirmation(fmt.Sprintf("Delete %s '%s'?", itemType, p.fileOpTarget.Name))
 	}
 
 	// Handle confirmation mode for directory creation (during move)
 	if p.fileOpConfirmCreate {
-		confirmLine := fmt.Sprintf(" Create '%s'? [y]es / [n]o", p.fileOpConfirmPath)
-		return styles.ModalTitle.Render(confirmLine)
+		return p.renderFileOpConfirmation(fmt.Sprintf("Create '%s'?", p.fileOpConfirmPath))
 	}
 
 	var prompt string
@@ -325,14 +323,83 @@ func (p *Plugin) renderFileOpBar() string {
 
 	inputLine := fmt.Sprintf(" %s%s", prompt, p.fileOpTextInput.View())
 
+	var lines []string
+	lines = append(lines, styles.ModalTitle.Render(inputLine))
+
 	if p.fileOpError != "" {
-		errorLine := styles.StatusDeleted.Render(" " + p.fileOpError)
-		return lipgloss.JoinVertical(lipgloss.Left,
-			styles.ModalTitle.Render(inputLine),
-			errorLine,
-		)
+		lines = append(lines, styles.StatusDeleted.Render(" "+p.fileOpError))
 	}
-	return styles.ModalTitle.Render(inputLine)
+
+	// Show suggestion dropdown for move mode
+	if p.fileOpMode == FileOpMove && p.fileOpShowSuggestions && len(p.fileOpSuggestions) > 0 {
+		lines = append(lines, p.renderFileOpSuggestions())
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// renderFileOpConfirmation renders a confirmation dialog with Yes/No buttons.
+func (p *Plugin) renderFileOpConfirmation(message string) string {
+	// Clear existing hit regions for buttons
+	p.mouseHandler.HitMap.Clear()
+
+	var sb strings.Builder
+	sb.WriteString(" ")
+	sb.WriteString(message)
+	sb.WriteString("  ")
+
+	// Calculate button positions (approximate, based on rendered text)
+	// We use tree pane width as reference since bar is rendered in tree pane
+	baseX := 1 + len(message) + 2 // space + message + spacing
+
+	// Yes button
+	yesBtn := "Yes"
+	if p.fileOpButtonHover == 1 {
+		sb.WriteString(styles.ButtonHover.Render(yesBtn))
+	} else if p.fileOpButtonFocus == 1 {
+		sb.WriteString(styles.ButtonFocused.Render(yesBtn))
+	} else {
+		sb.WriteString(styles.Button.Render(yesBtn))
+	}
+	yesWidth := len(yesBtn) + 4 // Padding adds 2 on each side
+	p.mouseHandler.HitMap.AddRect(regionFileOpConfirm, baseX, 0, yesWidth, 1, nil)
+
+	sb.WriteString(" ")
+	baseX += yesWidth + 1
+
+	// No button
+	noBtn := "No"
+	if p.fileOpButtonHover == 2 {
+		sb.WriteString(styles.ButtonHover.Render(noBtn))
+	} else if p.fileOpButtonFocus == 2 {
+		sb.WriteString(styles.ButtonFocused.Render(noBtn))
+	} else {
+		sb.WriteString(styles.Button.Render(noBtn))
+	}
+	noWidth := len(noBtn) + 4
+	p.mouseHandler.HitMap.AddRect(regionFileOpCancel, baseX, 0, noWidth, 1, nil)
+
+	return styles.ModalTitle.Render(sb.String())
+}
+
+// renderFileOpSuggestions renders the path suggestion dropdown.
+func (p *Plugin) renderFileOpSuggestions() string {
+	var lines []string
+
+	for i, suggestion := range p.fileOpSuggestions {
+		line := " " + suggestion
+		if i == p.fileOpSuggestionIdx {
+			line = styles.ListItemSelected.Render(line)
+		} else {
+			line = styles.Muted.Render(line)
+		}
+		lines = append(lines, line)
+
+		// Register hit region for this suggestion (Y offset = line index + 1 for input bar)
+		p.mouseHandler.HitMap.AddRect(regionFileOpSuggestion, 0, i+1, p.treeWidth, 1, i)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 // renderTreePane renders the file tree in the left pane.

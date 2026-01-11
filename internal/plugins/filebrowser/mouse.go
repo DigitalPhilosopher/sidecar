@@ -25,8 +25,9 @@ const (
 	regionSearchResults     = "search-results"      // Results pane for scrolling
 
 	// File operation modal buttons
-	regionFileOpConfirm = "file-op-confirm" // Confirm/Create/Delete/Yes button
-	regionFileOpCancel  = "file-op-cancel"  // Cancel/No button
+	regionFileOpConfirm     = "file-op-confirm"     // Confirm/Create/Delete/Yes button
+	regionFileOpCancel      = "file-op-cancel"      // Cancel/No button
+	regionFileOpSuggestion  = "file-op-suggestion"  // Path suggestion item (Data: index)
 )
 
 // searchMatchData holds indices for a search match region.
@@ -84,6 +85,12 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 		p.fileOpButtonHover = 1
 	case regionFileOpCancel:
 		p.fileOpButtonHover = 2
+	case regionFileOpSuggestion:
+		// Highlight suggestion on hover
+		if idx, ok := action.Region.Data.(int); ok {
+			p.fileOpSuggestionIdx = idx
+		}
+		p.fileOpButtonHover = 0
 	default:
 		p.fileOpButtonHover = 0
 	}
@@ -152,6 +159,17 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 			p.fileOpConfirmDelete = false
 			p.fileOpConfirmCreate = false
 			return p, nil
+		}
+		return p, nil
+
+	case regionFileOpSuggestion:
+		// Click on a path suggestion item
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx >= 0 && idx < len(p.fileOpSuggestions) {
+				p.fileOpTextInput.SetValue(p.fileOpSuggestions[idx])
+				p.fileOpShowSuggestions = false
+				p.fileOpSuggestionIdx = -1
+			}
 		}
 		return p, nil
 	}

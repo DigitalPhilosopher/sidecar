@@ -345,34 +345,30 @@ func (p *Plugin) renderSearchMatchLine(match SearchMatch, matchIdx int, selected
 		availableWidth = 10
 	}
 
-	// Trim and truncate line text
+	// Trim line text
 	lineText := strings.TrimSpace(match.LineText)
-	if len(lineText) > availableWidth {
-		// Try to center the match in the visible portion
-		matchCenter := (match.ColStart + match.ColEnd) / 2
-		start := matchCenter - availableWidth/2
-		if start < 0 {
-			start = 0
-		}
-		end := start + availableWidth
-		if end > len(lineText) {
-			end = len(lineText)
-			start = end - availableWidth
-			if start < 0 {
-				start = 0
-			}
-		}
 
-		if start > 0 {
-			lineText = "..." + lineText[start+3:]
-		}
-		if len(lineText) > availableWidth {
-			lineText = lineText[:availableWidth-3] + "..."
-		}
+	// Convert byte positions to rune positions for safe handling
+	runeStart := ui.BytePosToRunePos(match.LineText, match.ColStart)
+	runeEnd := ui.BytePosToRunePos(match.LineText, match.ColEnd)
+
+	// Adjust rune positions after TrimSpace (approximate)
+	leadingSpaces := len(match.LineText) - len(strings.TrimLeft(match.LineText, " \t"))
+	leadingRuneOffset := ui.BytePosToRunePos(match.LineText, leadingSpaces)
+	runeStart -= leadingRuneOffset
+	runeEnd -= leadingRuneOffset
+	if runeStart < 0 {
+		runeStart = 0
+	}
+	if runeEnd < runeStart {
+		runeEnd = runeStart
 	}
 
-	// Highlight the match within the line
-	highlightedLine := highlightMatchInLine(lineText, match, match.ColStart, match.ColEnd)
+	// Truncate centering on the match, get adjusted highlight positions
+	lineText, hlStart, hlEnd := ui.TruncateMid(lineText, availableWidth, runeStart, runeEnd)
+
+	// Highlight the match within the line using rune positions
+	highlightedLine := highlightMatchInLineRunes(lineText, hlStart, hlEnd)
 
 	// Build line
 	line := fmt.Sprintf("%s%s%s",
@@ -387,37 +383,28 @@ func (p *Plugin) renderSearchMatchLine(match SearchMatch, matchIdx int, selected
 	return line
 }
 
-// highlightMatchInLine applies highlighting to the matched portion.
-func highlightMatchInLine(lineText string, match SearchMatch, colStart, colEnd int) string {
-	// Adjust for any trimming/truncation that happened
-	// Find the match text within the line
-	if colStart < 0 {
-		colStart = 0
+// highlightMatchInLineRunes applies highlighting using rune positions (safe for Unicode).
+func highlightMatchInLineRunes(lineText string, runeStart, runeEnd int) string {
+	runes := []rune(lineText)
+
+	if runeStart < 0 {
+		runeStart = 0
 	}
-	if colEnd > len(lineText) {
-		colEnd = len(lineText)
+	if runeEnd > len(runes) {
+		runeEnd = len(runes)
 	}
-	if colStart >= colEnd || colStart >= len(lineText) {
+	if runeStart >= runeEnd || runeStart >= len(runes) {
 		return lineText
 	}
 
-	// Find match text in the (possibly truncated) line
-	originalMatchText := match.LineText[match.ColStart:match.ColEnd]
-	matchStart := strings.Index(lineText, originalMatchText)
-	if matchStart == -1 {
-		// Match not found in truncated text, just return plain
-		return lineText
-	}
-	matchEnd := matchStart + len(originalMatchText)
-
-	// Build highlighted line
+	// Build highlighted line using rune slicing
 	var result strings.Builder
-	if matchStart > 0 {
-		result.WriteString(lineText[:matchStart])
+	if runeStart > 0 {
+		result.WriteString(string(runes[:runeStart]))
 	}
-	result.WriteString(styles.SearchMatchCurrent.Render(lineText[matchStart:matchEnd]))
-	if matchEnd < len(lineText) {
-		result.WriteString(lineText[matchEnd:])
+	result.WriteString(styles.SearchMatchCurrent.Render(string(runes[runeStart:runeEnd])))
+	if runeEnd < len(runes) {
+		result.WriteString(string(runes[runeEnd:]))
 	}
 
 	return result.String()

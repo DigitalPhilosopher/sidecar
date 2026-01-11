@@ -37,7 +37,8 @@ const (
 // Adapter implements the adapter.Adapter interface for Codex CLI sessions.
 type Adapter struct {
 	sessionsDir  string
-	sessionIndex map[string]string
+	sessionIndex map[string]string // sessionID -> file path cache
+	mu           sync.RWMutex      // guards sessionIndex
 }
 
 // New creates a new Codex adapter.
@@ -94,7 +95,9 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	}
 
 	sessions := make([]adapter.Session, 0, len(files))
+	a.mu.Lock()
 	a.sessionIndex = make(map[string]string)
+	a.mu.Unlock()
 	for _, path := range files {
 		meta, err := a.parseSessionMetadata(path)
 		if err != nil {
@@ -126,7 +129,9 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			MessageCount: meta.MsgCount,
 		})
 
+		a.mu.Lock()
 		a.sessionIndex[meta.SessionID] = path
+		a.mu.Unlock()
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
@@ -507,9 +512,12 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 }
 
 func (a *Adapter) sessionFilePath(sessionID string) string {
+	a.mu.RLock()
 	if path, ok := a.sessionIndex[sessionID]; ok && path != "" {
+		a.mu.RUnlock()
 		return path
 	}
+	a.mu.RUnlock()
 
 	files, err := a.sessionFiles()
 	if err != nil {
