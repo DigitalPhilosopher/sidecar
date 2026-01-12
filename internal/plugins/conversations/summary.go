@@ -77,6 +77,66 @@ func ComputeSessionSummary(messages []adapter.Message, duration time.Duration) S
 	return summary
 }
 
+// UpdateSessionSummary incrementally updates an existing summary with new messages.
+// It avoids re-scanning all messages by only processing the new ones.
+// Note: primary model may change if new messages use a different model more frequently.
+func UpdateSessionSummary(summary *SessionSummary, newMessages []adapter.Message, modelCounts map[string]int, fileSet map[string]bool) {
+	if summary == nil || len(newMessages) == 0 {
+		return
+	}
+
+	// Initialize maps if not provided (for first-time callers)
+	if modelCounts == nil {
+		modelCounts = make(map[string]int)
+	}
+	if fileSet == nil {
+		fileSet = make(map[string]bool)
+		for _, fp := range summary.FilesTouched {
+			fileSet[fp] = true
+		}
+	}
+
+	for _, msg := range newMessages {
+		summary.MessageCount++
+		summary.TotalTokensIn += msg.InputTokens
+		summary.TotalTokensOut += msg.OutputTokens
+		summary.TotalCacheRead += msg.CacheRead
+
+		if msg.Model != "" {
+			modelCounts[msg.Model]++
+		}
+
+		for _, tu := range msg.ToolUses {
+			summary.ToolCounts[tu.Name]++
+			if fp := extractFilePath(tu.Input); fp != "" {
+				if !fileSet[fp] {
+					fileSet[fp] = true
+					summary.FilesTouched = append(summary.FilesTouched, fp)
+				}
+			}
+		}
+	}
+
+	// Update primary model if needed
+	var maxCount int
+	for model, count := range modelCounts {
+		if count > maxCount {
+			maxCount = count
+			summary.PrimaryModel = model
+		}
+	}
+
+	summary.FileCount = len(summary.FilesTouched)
+
+	// Recalculate cost
+	summary.TotalCost = estimateTotalCost(
+		summary.PrimaryModel,
+		summary.TotalTokensIn,
+		summary.TotalTokensOut,
+		summary.TotalCacheRead,
+	)
+}
+
 // estimateTotalCost calculates cost based on model and tokens.
 func estimateTotalCost(model string, inputTokens, outputTokens, cacheRead int) float64 {
 	var inRate, outRate float64

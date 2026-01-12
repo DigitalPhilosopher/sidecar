@@ -94,9 +94,11 @@ type Plugin struct {
 	pageSize         int
 	hasMore          bool
 	expandedThinking map[string]bool // message ID -> thinking expanded
-	sessionSummary   *SessionSummary // computed summary for current session
-	showToolSummary  bool            // toggle for tool impact view
-	turnViewMode     bool            // false = conversation flow (default), true = turn view
+	sessionSummary     *SessionSummary  // computed summary for current session
+	summaryModelCounts map[string]int   // model usage counts for incremental summary updates
+	summaryFileSet     map[string]bool  // unique files for incremental summary updates
+	showToolSummary    bool             // toggle for tool impact view
+	turnViewMode       bool             // false = conversation flow (default), true = turn view
 
 	// Message detail view state
 	detailMode   bool  // true when showing detail in right pane (two-pane mode)
@@ -331,13 +333,28 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p, nil
 		}
 
+		// Get session duration for summary
+		var duration time.Duration
+		for _, s := range p.sessions {
+			if s.ID == p.selectedSession {
+				duration = s.Duration
+				break
+			}
+		}
+
 		if isIncremental {
 			// Incremental update: only process new messages
-			newMessages := msg.Messages[len(p.messages):]
+			oldLen := len(p.messages)
+			newMessages := msg.Messages[oldLen:]
 			p.messages = msg.Messages
-			// Append new turns without re-grouping everything
-			newTurns := GroupMessagesIntoTurns(newMessages)
-			p.turns = append(p.turns, newTurns...)
+
+			// Incrementally update turns (handles extending last turn if same role)
+			p.turns = AppendMessagesToTurns(p.turns, newMessages, oldLen)
+
+			// Incrementally update summary
+			if p.sessionSummary != nil {
+				UpdateSessionSummary(p.sessionSummary, newMessages, p.summaryModelCounts, p.summaryFileSet)
+			}
 			// Don't reset cursors - user may be scrolled
 		} else {
 			// Full reload: different session or messages don't match
@@ -351,19 +368,25 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			if len(visibleIndices) > 0 {
 				p.messageCursor = visibleIndices[0]
 			}
+
+			// Full summary computation - also initialize tracking maps for future incremental updates
+			summary := ComputeSessionSummary(msg.Messages, duration)
+			p.sessionSummary = &summary
+			p.summaryModelCounts = make(map[string]int)
+			p.summaryFileSet = make(map[string]bool)
+			for _, m := range msg.Messages {
+				if m.Model != "" {
+					p.summaryModelCounts[m.Model]++
+				}
+				for _, tu := range m.ToolUses {
+					if fp := extractFilePath(tu.Input); fp != "" {
+						p.summaryFileSet[fp] = true
+					}
+				}
+			}
 		}
 
 		p.hasMore = len(msg.Messages) >= p.pageSize
-		// Compute session summary
-		var duration time.Duration
-		for _, s := range p.sessions {
-			if s.ID == p.selectedSession {
-				duration = s.Duration
-				break
-			}
-		}
-		summary := ComputeSessionSummary(msg.Messages, duration)
-		p.sessionSummary = &summary
 		return p, nil
 
 	case WatchStartedMsg:

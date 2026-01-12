@@ -224,6 +224,174 @@ func TestStripXMLTags(t *testing.T) {
 	}
 }
 
+func TestAppendMessagesToTurns(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name        string
+		turns       []Turn
+		newMessages []adapter.Message
+		startIndex  int
+		wantTurns   int
+		wantLast    Turn // expected last turn
+	}{
+		{
+			name:        "Empty new messages",
+			turns:       []Turn{{Role: "user", StartIndex: 0}},
+			newMessages: []adapter.Message{},
+			startIndex:  1,
+			wantTurns:   1,
+			wantLast:    Turn{Role: "user", StartIndex: 0}, // Unchanged
+		},
+		{
+			name:  "Empty existing turns",
+			turns: nil,
+			newMessages: []adapter.Message{
+				{Role: "user", Content: "Hello", Timestamp: now},
+			},
+			startIndex: 0,
+			wantTurns:  1,
+			wantLast:   Turn{Role: "user", StartIndex: 0},
+		},
+		{
+			name: "Extend last turn same role",
+			turns: []Turn{
+				{
+					Role:       "user",
+					StartIndex: 0,
+					Messages:   []adapter.Message{{Role: "user", Content: "Q1", Timestamp: now}},
+				},
+				{
+					Role:       "assistant",
+					StartIndex: 1,
+					Messages:   []adapter.Message{{Role: "assistant", Content: "A1", Timestamp: now}},
+				},
+			},
+			newMessages: []adapter.Message{
+				{Role: "assistant", Content: "A1 continued", Timestamp: now, TokenUsage: adapter.TokenUsage{OutputTokens: 100}},
+			},
+			startIndex: 2,
+			wantTurns:  2, // Should NOT create new turn
+			wantLast:   Turn{Role: "assistant", StartIndex: 1, TotalTokensOut: 100},
+		},
+		{
+			name: "New turn different role",
+			turns: []Turn{
+				{
+					Role:       "assistant",
+					StartIndex: 0,
+					Messages:   []adapter.Message{{Role: "assistant", Content: "A1", Timestamp: now}},
+				},
+			},
+			newMessages: []adapter.Message{
+				{Role: "user", Content: "Q2", Timestamp: now, TokenUsage: adapter.TokenUsage{InputTokens: 50}},
+			},
+			startIndex: 1,
+			wantTurns:  2, // Should create new turn
+			wantLast:   Turn{Role: "user", StartIndex: 1, TotalTokensIn: 50},
+		},
+		{
+			name: "Multiple new messages with role change",
+			turns: []Turn{
+				{Role: "user", StartIndex: 0, Messages: []adapter.Message{{Role: "user"}}},
+			},
+			newMessages: []adapter.Message{
+				{Role: "assistant", Content: "Response 1", Timestamp: now},
+				{Role: "assistant", Content: "Response 2", Timestamp: now, ToolUses: []adapter.ToolUse{{}}},
+				{Role: "user", Content: "Follow up", Timestamp: now},
+			},
+			startIndex: 1,
+			wantTurns:  3, // user -> assistant -> user
+			wantLast:   Turn{Role: "user", StartIndex: 3},
+		},
+		{
+			name: "Verify correct StartIndex with offset",
+			turns: []Turn{
+				{Role: "user", StartIndex: 0, Messages: []adapter.Message{{Role: "user"}}},
+				{Role: "assistant", StartIndex: 1, Messages: []adapter.Message{{Role: "assistant"}}},
+			},
+			newMessages: []adapter.Message{
+				{Role: "user", Content: "Q2", Timestamp: now},
+				{Role: "assistant", Content: "A2", Timestamp: now},
+			},
+			startIndex: 2,
+			wantTurns:  4,
+			wantLast:   Turn{Role: "assistant", StartIndex: 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AppendMessagesToTurns(tt.turns, tt.newMessages, tt.startIndex)
+
+			if len(got) != tt.wantTurns {
+				t.Fatalf("got %d turns, want %d", len(got), tt.wantTurns)
+			}
+
+			if tt.wantTurns > 0 && len(got) > 0 {
+				last := got[len(got)-1]
+				if last.Role != tt.wantLast.Role {
+					t.Errorf("last turn Role = %q, want %q", last.Role, tt.wantLast.Role)
+				}
+				if last.StartIndex != tt.wantLast.StartIndex {
+					t.Errorf("last turn StartIndex = %d, want %d", last.StartIndex, tt.wantLast.StartIndex)
+				}
+				if tt.wantLast.TotalTokensIn > 0 && last.TotalTokensIn != tt.wantLast.TotalTokensIn {
+					t.Errorf("last turn TotalTokensIn = %d, want %d", last.TotalTokensIn, tt.wantLast.TotalTokensIn)
+				}
+				if tt.wantLast.TotalTokensOut > 0 && last.TotalTokensOut != tt.wantLast.TotalTokensOut {
+					t.Errorf("last turn TotalTokensOut = %d, want %d", last.TotalTokensOut, tt.wantLast.TotalTokensOut)
+				}
+			}
+		})
+	}
+}
+
+func TestAppendMessagesToTurns_Equivalent(t *testing.T) {
+	// Verify that incremental append produces same result as full grouping
+	now := time.Now()
+	allMessages := []adapter.Message{
+		{Role: "user", Content: "Q1", Timestamp: now, TokenUsage: adapter.TokenUsage{InputTokens: 10}},
+		{Role: "assistant", Content: "A1", Timestamp: now, TokenUsage: adapter.TokenUsage{OutputTokens: 20}},
+		{Role: "assistant", Content: "A1 tool", Timestamp: now, ToolUses: []adapter.ToolUse{{}}},
+		{Role: "user", Content: "Q2", Timestamp: now, TokenUsage: adapter.TokenUsage{InputTokens: 15}},
+		{Role: "assistant", Content: "A2", Timestamp: now, TokenUsage: adapter.TokenUsage{OutputTokens: 30}},
+	}
+
+	// Full grouping
+	fullTurns := GroupMessagesIntoTurns(allMessages)
+
+	// Incremental: group first 2, then append rest
+	initialTurns := GroupMessagesIntoTurns(allMessages[:2])
+	incrementalTurns := AppendMessagesToTurns(initialTurns, allMessages[2:], 2)
+
+	if len(fullTurns) != len(incrementalTurns) {
+		t.Fatalf("turn count mismatch: full=%d, incremental=%d", len(fullTurns), len(incrementalTurns))
+	}
+
+	for i := range fullTurns {
+		f, inc := fullTurns[i], incrementalTurns[i]
+		if f.Role != inc.Role {
+			t.Errorf("turn[%d] Role: full=%q, incremental=%q", i, f.Role, inc.Role)
+		}
+		if f.StartIndex != inc.StartIndex {
+			t.Errorf("turn[%d] StartIndex: full=%d, incremental=%d", i, f.StartIndex, inc.StartIndex)
+		}
+		if len(f.Messages) != len(inc.Messages) {
+			t.Errorf("turn[%d] Messages: full=%d, incremental=%d", i, len(f.Messages), len(inc.Messages))
+		}
+		if f.TotalTokensIn != inc.TotalTokensIn {
+			t.Errorf("turn[%d] TotalTokensIn: full=%d, incremental=%d", i, f.TotalTokensIn, inc.TotalTokensIn)
+		}
+		if f.TotalTokensOut != inc.TotalTokensOut {
+			t.Errorf("turn[%d] TotalTokensOut: full=%d, incremental=%d", i, f.TotalTokensOut, inc.TotalTokensOut)
+		}
+		if f.ToolCount != inc.ToolCount {
+			t.Errorf("turn[%d] ToolCount: full=%d, incremental=%d", i, f.ToolCount, inc.ToolCount)
+		}
+	}
+}
+
 func TestTurnPreview(t *testing.T) {
 	tests := []struct {
 		name     string

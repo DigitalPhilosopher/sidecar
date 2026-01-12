@@ -327,3 +327,166 @@ func TestGroupSessionsByTime_GroupSummaryPopulated(t *testing.T) {
 		t.Errorf("expected cost ~0.25, got %f", yesterday.Summary.TotalCost)
 	}
 }
+
+func TestUpdateSessionSummary_Basic(t *testing.T) {
+	// Start with existing summary
+	summary := &SessionSummary{
+		MessageCount:   2,
+		TotalTokensIn:  1000,
+		TotalTokensOut: 500,
+		TotalCacheRead: 100,
+		PrimaryModel:   "claude-sonnet-4-5-20250929",
+		ToolCounts:     map[string]int{"Read": 1},
+		FilesTouched:   []string{"/a.go"},
+		FileCount:      1,
+	}
+	modelCounts := map[string]int{"claude-sonnet-4-5-20250929": 2}
+	fileSet := map[string]bool{"/a.go": true}
+
+	newMessages := []adapter.Message{
+		{
+			Model:      "claude-sonnet-4-5-20250929",
+			TokenUsage: adapter.TokenUsage{InputTokens: 500, OutputTokens: 250, CacheRead: 50},
+			ToolUses:   []adapter.ToolUse{{Name: "Edit", Input: `{"file_path": "/b.go"}`}},
+		},
+	}
+
+	UpdateSessionSummary(summary, newMessages, modelCounts, fileSet)
+
+	if summary.MessageCount != 3 {
+		t.Errorf("expected MessageCount 3, got %d", summary.MessageCount)
+	}
+	if summary.TotalTokensIn != 1500 {
+		t.Errorf("expected TotalTokensIn 1500, got %d", summary.TotalTokensIn)
+	}
+	if summary.TotalTokensOut != 750 {
+		t.Errorf("expected TotalTokensOut 750, got %d", summary.TotalTokensOut)
+	}
+	if summary.TotalCacheRead != 150 {
+		t.Errorf("expected TotalCacheRead 150, got %d", summary.TotalCacheRead)
+	}
+	if summary.FileCount != 2 {
+		t.Errorf("expected FileCount 2, got %d", summary.FileCount)
+	}
+	if summary.ToolCounts["Edit"] != 1 {
+		t.Errorf("expected Edit count 1, got %d", summary.ToolCounts["Edit"])
+	}
+}
+
+func TestUpdateSessionSummary_DuplicateFile(t *testing.T) {
+	summary := &SessionSummary{
+		ToolCounts:   map[string]int{"Read": 1},
+		FilesTouched: []string{"/a.go"},
+		FileCount:    1,
+	}
+	fileSet := map[string]bool{"/a.go": true}
+
+	newMessages := []adapter.Message{
+		{ToolUses: []adapter.ToolUse{{Name: "Edit", Input: `{"file_path": "/a.go"}`}}},
+	}
+
+	UpdateSessionSummary(summary, newMessages, nil, fileSet)
+
+	// File should not be duplicated
+	if summary.FileCount != 1 {
+		t.Errorf("expected FileCount 1 (no duplicate), got %d", summary.FileCount)
+	}
+	if len(summary.FilesTouched) != 1 {
+		t.Errorf("expected 1 file, got %d", len(summary.FilesTouched))
+	}
+}
+
+func TestUpdateSessionSummary_ModelChange(t *testing.T) {
+	summary := &SessionSummary{
+		MessageCount: 2,
+		PrimaryModel: "claude-sonnet-4-5-20250929",
+		ToolCounts:   make(map[string]int),
+	}
+	modelCounts := map[string]int{"claude-sonnet-4-5-20250929": 2}
+
+	// Add 3 opus messages to change primary model
+	newMessages := []adapter.Message{
+		{Model: "claude-opus-4-5-20251101"},
+		{Model: "claude-opus-4-5-20251101"},
+		{Model: "claude-opus-4-5-20251101"},
+	}
+
+	UpdateSessionSummary(summary, newMessages, modelCounts, nil)
+
+	// Opus should now be primary (3 > 2)
+	if summary.PrimaryModel != "claude-opus-4-5-20251101" {
+		t.Errorf("expected PrimaryModel opus, got %s", summary.PrimaryModel)
+	}
+	if summary.MessageCount != 5 {
+		t.Errorf("expected MessageCount 5, got %d", summary.MessageCount)
+	}
+}
+
+func TestUpdateSessionSummary_NilSummary(t *testing.T) {
+	// Should not panic on nil summary
+	UpdateSessionSummary(nil, []adapter.Message{{Model: "test"}}, nil, nil)
+}
+
+func TestUpdateSessionSummary_EmptyMessages(t *testing.T) {
+	summary := &SessionSummary{
+		MessageCount: 5,
+		ToolCounts:   make(map[string]int),
+	}
+
+	UpdateSessionSummary(summary, nil, nil, nil)
+
+	// Should remain unchanged
+	if summary.MessageCount != 5 {
+		t.Errorf("expected MessageCount 5, got %d", summary.MessageCount)
+	}
+}
+
+func TestUpdateSessionSummary_Equivalent(t *testing.T) {
+	// Verify incremental update produces same result as full computation
+	messages := []adapter.Message{
+		{
+			Model:      "claude-sonnet-4-5-20250929",
+			TokenUsage: adapter.TokenUsage{InputTokens: 1000, OutputTokens: 500},
+			ToolUses:   []adapter.ToolUse{{Name: "Read", Input: `{"file_path": "/a.go"}`}},
+		},
+		{
+			Model:      "claude-sonnet-4-5-20250929",
+			TokenUsage: adapter.TokenUsage{InputTokens: 2000, OutputTokens: 1000, CacheRead: 500},
+			ToolUses:   []adapter.ToolUse{{Name: "Edit", Input: `{"file_path": "/a.go"}`}},
+		},
+		{
+			Model:      "claude-opus-4-5-20251101",
+			TokenUsage: adapter.TokenUsage{InputTokens: 500, OutputTokens: 250},
+			ToolUses:   []adapter.ToolUse{{Name: "Read", Input: `{"file_path": "/b.go"}`}},
+		},
+	}
+
+	// Full computation
+	fullSummary := ComputeSessionSummary(messages, 10*time.Minute)
+
+	// Incremental: compute first 2, then update with 3rd
+	incSummary := ComputeSessionSummary(messages[:2], 10*time.Minute)
+	modelCounts := map[string]int{"claude-sonnet-4-5-20250929": 2}
+	fileSet := map[string]bool{"/a.go": true}
+	UpdateSessionSummary(&incSummary, messages[2:], modelCounts, fileSet)
+
+	// Compare
+	if fullSummary.MessageCount != incSummary.MessageCount {
+		t.Errorf("MessageCount: full=%d, inc=%d", fullSummary.MessageCount, incSummary.MessageCount)
+	}
+	if fullSummary.TotalTokensIn != incSummary.TotalTokensIn {
+		t.Errorf("TotalTokensIn: full=%d, inc=%d", fullSummary.TotalTokensIn, incSummary.TotalTokensIn)
+	}
+	if fullSummary.TotalTokensOut != incSummary.TotalTokensOut {
+		t.Errorf("TotalTokensOut: full=%d, inc=%d", fullSummary.TotalTokensOut, incSummary.TotalTokensOut)
+	}
+	if fullSummary.TotalCacheRead != incSummary.TotalCacheRead {
+		t.Errorf("TotalCacheRead: full=%d, inc=%d", fullSummary.TotalCacheRead, incSummary.TotalCacheRead)
+	}
+	if fullSummary.FileCount != incSummary.FileCount {
+		t.Errorf("FileCount: full=%d, inc=%d", fullSummary.FileCount, incSummary.FileCount)
+	}
+	if fullSummary.PrimaryModel != incSummary.PrimaryModel {
+		t.Errorf("PrimaryModel: full=%s, inc=%s", fullSummary.PrimaryModel, incSummary.PrimaryModel)
+	}
+}

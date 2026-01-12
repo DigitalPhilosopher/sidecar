@@ -113,3 +113,88 @@ func GroupMessagesIntoTurns(messages []adapter.Message) []Turn {
 
 	return turns
 }
+
+// AppendMessagesToTurns incrementally adds new messages to existing turns.
+// It handles the case where the first new message may extend the last turn.
+// Returns the updated turns slice (may modify the last element in place).
+func AppendMessagesToTurns(turns []Turn, newMessages []adapter.Message, startIndex int) []Turn {
+	if len(newMessages) == 0 {
+		return turns
+	}
+
+	// If no existing turns, create from scratch
+	if len(turns) == 0 {
+		return groupMessagesWithOffset(newMessages, startIndex)
+	}
+
+	// Check if first new message extends the last turn
+	lastTurn := &turns[len(turns)-1]
+	msgIdx := startIndex
+
+	for i, msg := range newMessages {
+		if i == 0 && msg.Role == lastTurn.Role {
+			// Extend the last turn
+			addMessageToTurn(lastTurn, msg)
+			msgIdx++
+			continue
+		}
+
+		if msg.Role == lastTurn.Role {
+			// Still same role, extend current turn
+			addMessageToTurn(lastTurn, msg)
+		} else {
+			// Role changed, create new turn
+			newTurn := Turn{
+				Role:       msg.Role,
+				StartIndex: msgIdx,
+			}
+			addMessageToTurn(&newTurn, msg)
+			turns = append(turns, newTurn)
+			lastTurn = &turns[len(turns)-1]
+		}
+		msgIdx++
+	}
+
+	return turns
+}
+
+// groupMessagesWithOffset groups messages into turns with a starting index offset.
+func groupMessagesWithOffset(messages []adapter.Message, offset int) []Turn {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	var turns []Turn
+	currentTurn := Turn{
+		Role:       messages[0].Role,
+		StartIndex: offset,
+	}
+
+	for i, msg := range messages {
+		if msg.Role != currentTurn.Role {
+			turns = append(turns, currentTurn)
+			currentTurn = Turn{
+				Role:       msg.Role,
+				StartIndex: offset + i,
+			}
+		}
+		addMessageToTurn(&currentTurn, msg)
+	}
+
+	if len(currentTurn.Messages) > 0 {
+		turns = append(turns, currentTurn)
+	}
+
+	return turns
+}
+
+// addMessageToTurn adds a message to a turn, updating all aggregates.
+func addMessageToTurn(t *Turn, msg adapter.Message) {
+	t.Messages = append(t.Messages, msg)
+	t.TotalTokensIn += msg.InputTokens
+	t.TotalTokensOut += msg.OutputTokens
+	t.ToolCount += len(msg.ToolUses)
+	for _, tb := range msg.ThinkingBlocks {
+		t.ThinkingTokens += tb.TokenCount
+	}
+}
