@@ -599,15 +599,16 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleCreateKeys handles keys in create modal.
+// createFocus: 0=name, 1=base, 2=task, 3=create button, 4=cancel button
 func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		p.viewMode = ViewModeList
 		p.clearCreateModal()
 	case "tab":
-		p.createFocus = (p.createFocus + 1) % 4
+		p.createFocus = (p.createFocus + 1) % 5
 	case "shift+tab":
-		p.createFocus = (p.createFocus + 3) % 4
+		p.createFocus = (p.createFocus + 4) % 5
 	case "up":
 		// Navigate task dropdown
 		if p.createFocus == 2 && len(p.taskSearchFiltered) > 0 {
@@ -628,13 +629,23 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			// Select task and move to next field
 			selectedTask := p.taskSearchFiltered[p.taskSearchIdx]
 			p.createTaskID = selectedTask.ID
-			p.createFocus = 3 // Move to confirm button
+			p.createFocus = 3 // Move to create button
 			return nil
 		}
+		// Create button
 		if p.createFocus == 3 {
 			return p.createWorktree()
 		}
-		p.createFocus = (p.createFocus + 1) % 4
+		// Cancel button
+		if p.createFocus == 4 {
+			p.viewMode = ViewModeList
+			p.clearCreateModal()
+			return nil
+		}
+		// From input fields, move to next field
+		if p.createFocus < 3 {
+			p.createFocus++
+		}
 	case "backspace":
 		switch p.createFocus {
 		case 0:

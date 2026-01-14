@@ -392,7 +392,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			break
 		}
 		return m, m.PrevPlugin()
-	case "1", "2", "3", "4":
+	case "1", "2", "3", "4", "5":
 		// Number keys for direct plugin switching
 		// Block in text input contexts (user is typing numbers)
 		if isTextInputContext(m.activeContext) {

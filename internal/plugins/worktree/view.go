@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 var (
@@ -151,8 +153,32 @@ func (p *Plugin) renderSidebar(width, height int) string {
 
 	// Render worktree items
 	if len(p.worktrees) == 0 {
-		lines = append(lines, normalStyle.Foreground(lipgloss.Color("240")).Render("  No worktrees"))
-		lines = append(lines, normalStyle.Foreground(lipgloss.Color("240")).Render("  Press 'n' to create one"))
+		// Calculate vertical centering for empty state
+		emptyStateHeight := 2 // "No worktrees" + "Press 'n'..."
+		emptyStartY := (contentHeight - emptyStateHeight) / 2
+		if emptyStartY < 0 {
+			emptyStartY = 0
+		}
+
+		// Add padding lines before empty state message
+		for i := 0; i < emptyStartY; i++ {
+			lines = append(lines, "")
+		}
+
+		// Center the text horizontally
+		msg1 := "No worktrees"
+		msg2 := "Press 'n' to create one"
+		pad1 := (width - 2 - len(msg1)) / 2
+		pad2 := (width - 2 - len(msg2)) / 2
+		if pad1 < 0 {
+			pad1 = 0
+		}
+		if pad2 < 0 {
+			pad2 = 0
+		}
+
+		lines = append(lines, dimText(strings.Repeat(" ", pad1)+msg1))
+		lines = append(lines, dimText(strings.Repeat(" ", pad2)+msg2))
 	} else {
 		for i := p.scrollOffset; i < len(p.worktrees) && i < p.scrollOffset+p.visibleCount; i++ {
 			wt := p.worktrees[i]
@@ -485,17 +511,20 @@ func wrapText(text string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderCreateModal renders the new worktree modal.
+// renderCreateModal renders the new worktree modal with dimmed background.
 func (p *Plugin) renderCreateModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
 	// Modal dimensions
 	modalW := 50
 	if modalW > width-4 {
 		modalW = width - 4
 	}
 
-	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Create New Worktree"))
-	lines = append(lines, "")
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Create New Worktree"))
+	sb.WriteString("\n\n")
 
 	// Name field
 	nameLabel := "Name:"
@@ -507,9 +536,10 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	if nameValue == "" {
 		nameValue = " "
 	}
-	lines = append(lines, nameLabel)
-	lines = append(lines, nameStyle.Width(modalW-4).Render(nameValue))
-	lines = append(lines, "")
+	sb.WriteString(nameLabel)
+	sb.WriteString("\n")
+	sb.WriteString(nameStyle.Width(modalW - 4).Render(nameValue))
+	sb.WriteString("\n\n")
 
 	// Base branch field
 	baseLabel := "Base Branch (default: current):"
@@ -521,9 +551,10 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	if baseValue == "" {
 		baseValue = " "
 	}
-	lines = append(lines, baseLabel)
-	lines = append(lines, baseStyle.Width(modalW-4).Render(baseValue))
-	lines = append(lines, "")
+	sb.WriteString(baseLabel)
+	sb.WriteString("\n")
+	sb.WriteString(baseStyle.Width(modalW - 4).Render(baseValue))
+	sb.WriteString("\n\n")
 
 	// Task ID field with search dropdown
 	taskLabel := "Link Task (optional):"
@@ -540,13 +571,15 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 			taskValue = " "
 		}
 	}
-	lines = append(lines, taskLabel)
-	lines = append(lines, taskStyle.Width(modalW-4).Render(taskValue))
+	sb.WriteString(taskLabel)
+	sb.WriteString("\n")
+	sb.WriteString(taskStyle.Width(modalW - 4).Render(taskValue))
 
 	// Show task dropdown when focused and has results
 	if p.createFocus == 2 {
 		if p.taskSearchLoading {
-			lines = append(lines, dimText("  Loading tasks..."))
+			sb.WriteString("\n")
+			sb.WriteString(dimText("  Loading tasks..."))
 		} else if len(p.taskSearchFiltered) > 0 {
 			maxDropdown := 5
 			dropdownCount := min(maxDropdown, len(p.taskSearchFiltered))
@@ -563,55 +596,69 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 					title = title[:maxTitle-3] + "..."
 				}
 				line := fmt.Sprintf("%s%s  %s", prefix, task.ID, title)
+				sb.WriteString("\n")
 				if i == p.taskSearchIdx {
-					lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
+					sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
 				} else {
-					lines = append(lines, dimText(line))
+					sb.WriteString(dimText(line))
 				}
 			}
 			if len(p.taskSearchFiltered) > maxDropdown {
-				lines = append(lines, dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
+				sb.WriteString("\n")
+				sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
 			}
 		} else if p.taskSearchQuery != "" {
-			lines = append(lines, dimText("  No matching tasks"))
+			sb.WriteString("\n")
+			sb.WriteString(dimText("  No matching tasks"))
 		} else if len(p.taskSearchAll) == 0 {
-			lines = append(lines, dimText("  No open tasks found"))
+			sb.WriteString("\n")
+			sb.WriteString(dimText("  No open tasks found"))
 		} else {
 			// Show hint when no query
-			lines = append(lines, dimText("  Type to search, ↑/↓ to navigate"))
+			sb.WriteString("\n")
+			sb.WriteString(dimText("  Type to search, ↑/↓ to navigate"))
 		}
 	}
-	lines = append(lines, "")
+	sb.WriteString("\n\n")
 
-	// Buttons
-	createBtnStyle := buttonStyle
+	// Buttons - Create and Cancel
+	createBtnStyle := styles.Button
+	cancelBtnStyle := styles.Button
 	if p.createFocus == 3 {
-		createBtnStyle = buttonFocusedStyle
+		createBtnStyle = styles.ButtonFocused
 	}
-	lines = append(lines, createBtnStyle.Render("Create"))
+	if p.createFocus == 4 {
+		cancelBtnStyle = styles.ButtonFocused
+	}
+	sb.WriteString(createBtnStyle.Render(" Create "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelBtnStyle.Render(" Cancel "))
 
-	content := strings.Join(lines, "\n")
+	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
 
-	// Center the modal
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	// Use OverlayModal for dimmed background effect
+	return ui.OverlayModal(background, modal, width, height)
 }
 
-// renderTaskLinkModal renders the task link modal for existing worktrees.
+// renderTaskLinkModal renders the task link modal for existing worktrees with dimmed background.
 func (p *Plugin) renderTaskLinkModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
 	// Modal dimensions
 	modalW := 50
 	if modalW > width-4 {
 		modalW = width - 4
 	}
 
-	var lines []string
+	var sb strings.Builder
 	title := "Link Task"
 	if p.linkingWorktree != nil {
 		title = fmt.Sprintf("Link Task to %s", p.linkingWorktree.Name)
 	}
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render(title))
-	lines = append(lines, "")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(title))
+	sb.WriteString("\n\n")
 
 	// Search field
 	searchLabel := "Search tasks:"
@@ -620,12 +667,14 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 	if searchValue == "" {
 		searchValue = " "
 	}
-	lines = append(lines, searchLabel)
-	lines = append(lines, searchStyle.Width(modalW-4).Render(searchValue))
+	sb.WriteString(searchLabel)
+	sb.WriteString("\n")
+	sb.WriteString(searchStyle.Width(modalW - 4).Render(searchValue))
 
 	// Task dropdown
 	if p.taskSearchLoading {
-		lines = append(lines, dimText("  Loading tasks..."))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  Loading tasks..."))
 	} else if len(p.taskSearchFiltered) > 0 {
 		maxDropdown := 8
 		dropdownCount := min(maxDropdown, len(p.taskSearchFiltered))
@@ -636,25 +685,29 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 				prefix = "> "
 			}
 			// Truncate title to fit
-			title := task.Title
+			taskTitle := task.Title
 			maxTitle := modalW - 18
-			if len(title) > maxTitle {
-				title = title[:maxTitle-3] + "..."
+			if len(taskTitle) > maxTitle {
+				taskTitle = taskTitle[:maxTitle-3] + "..."
 			}
-			line := fmt.Sprintf("%s%s  %s", prefix, task.ID, title)
+			line := fmt.Sprintf("%s%s  %s", prefix, task.ID, taskTitle)
+			sb.WriteString("\n")
 			if i == p.taskSearchIdx {
-				lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
 			} else {
-				lines = append(lines, dimText(line))
+				sb.WriteString(dimText(line))
 			}
 		}
 		if len(p.taskSearchFiltered) > maxDropdown {
-			lines = append(lines, dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
+			sb.WriteString("\n")
+			sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
 		}
 	} else if p.taskSearchQuery != "" {
-		lines = append(lines, dimText("  No matching tasks"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  No matching tasks"))
 	} else if len(p.taskSearchAll) == 0 {
-		lines = append(lines, dimText("  No open tasks found"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  No open tasks found"))
 	} else {
 		// Show all tasks when no query
 		maxDropdown := 8
@@ -665,30 +718,33 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 			if i == p.taskSearchIdx {
 				prefix = "> "
 			}
-			title := task.Title
+			taskTitle := task.Title
 			maxTitle := modalW - 18
-			if len(title) > maxTitle {
-				title = title[:maxTitle-3] + "..."
+			if len(taskTitle) > maxTitle {
+				taskTitle = taskTitle[:maxTitle-3] + "..."
 			}
-			line := fmt.Sprintf("%s%s  %s", prefix, task.ID, title)
+			line := fmt.Sprintf("%s%s  %s", prefix, task.ID, taskTitle)
+			sb.WriteString("\n")
 			if i == p.taskSearchIdx {
-				lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
 			} else {
-				lines = append(lines, dimText(line))
+				sb.WriteString(dimText(line))
 			}
 		}
 		if len(p.taskSearchAll) > maxDropdown {
-			lines = append(lines, dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchAll)-maxDropdown)))
+			sb.WriteString("\n")
+			sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchAll)-maxDropdown)))
 		}
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, dimText("↑/↓ navigate  Enter select  Esc cancel"))
+	sb.WriteString("\n\n")
+	sb.WriteString(dimText("↑/↓ navigate  Enter select  Esc cancel"))
 
-	content := strings.Join(lines, "\n")
+	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	// Use OverlayModal for dimmed background effect
+	return ui.OverlayModal(background, modal, width, height)
 }
 
 // dimText renders dim placeholder text.
@@ -696,10 +752,13 @@ func dimText(s string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(s)
 }
 
-// renderMergeModal renders the merge workflow modal.
+// renderMergeModal renders the merge workflow modal with dimmed background.
 func (p *Plugin) renderMergeModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
 	if p.mergeState == nil {
-		return p.renderListView(width, height)
+		return background
 	}
 
 	// Modal dimensions
@@ -712,12 +771,12 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		modalH = 20
 	}
 
-	var lines []string
+	var sb strings.Builder
 
 	// Title
 	title := fmt.Sprintf("Merge Workflow: %s", p.mergeState.Worktree.Name)
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Render(title))
-	lines = append(lines, "")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(title))
+	sb.WriteString("\n\n")
 
 	// Progress indicators
 	steps := []MergeWorkflowStep{
@@ -755,75 +814,84 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 			lipgloss.NewStyle().Foreground(color).Render(icon),
 			stepName,
 		)
-		lines = append(lines, stepLine)
+		sb.WriteString(stepLine)
+		sb.WriteString("\n")
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, strings.Repeat("─", min(modalW-4, 60)))
-	lines = append(lines, "")
+	sb.WriteString("\n")
+	sb.WriteString(strings.Repeat("─", min(modalW-4, 60)))
+	sb.WriteString("\n\n")
 
 	// Step-specific content
 	switch p.mergeState.Step {
 	case MergeStepReviewDiff:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Diff Summary:"))
-		lines = append(lines, "")
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Diff Summary:"))
+		sb.WriteString("\n\n")
 		if p.mergeState.DiffSummary != "" {
 			// Truncate to fit modal
 			summaryLines := strings.Split(p.mergeState.DiffSummary, "\n")
-			maxLines := modalH - len(lines) - 4
+			maxLines := modalH - 15 // Account for header, progress, footer
+			if maxLines < 5 {
+				maxLines = 5
+			}
 			if len(summaryLines) > maxLines {
 				summaryLines = summaryLines[:maxLines]
 				summaryLines = append(summaryLines, fmt.Sprintf("... (%d more lines)", len(strings.Split(p.mergeState.DiffSummary, "\n"))-maxLines))
 			}
 			for _, line := range summaryLines {
-				lines = append(lines, colorDiffLine(line, modalW-4))
+				sb.WriteString(colorDiffLine(line, modalW-4))
+				sb.WriteString("\n")
 			}
 		} else {
-			lines = append(lines, dimText("Loading diff..."))
+			sb.WriteString(dimText("Loading diff..."))
+			sb.WriteString("\n")
 		}
-		lines = append(lines, "")
-		lines = append(lines, dimText("Press Enter to push branch, Esc to cancel"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("Press Enter to push branch, Esc to cancel"))
 
 	case MergeStepPush:
-		lines = append(lines, "Pushing branch to remote...")
+		sb.WriteString("Pushing branch to remote...")
 
 	case MergeStepCreatePR:
-		lines = append(lines, "Creating pull request...")
+		sb.WriteString("Creating pull request...")
 
 	case MergeStepWaitingMerge:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render("Pull Request Created"))
-		lines = append(lines, "")
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Pull Request Created"))
+		sb.WriteString("\n\n")
 		if p.mergeState.PRURL != "" {
-			lines = append(lines, fmt.Sprintf("URL: %s", p.mergeState.PRURL))
+			sb.WriteString(fmt.Sprintf("URL: %s", p.mergeState.PRURL))
+			sb.WriteString("\n")
 		}
-		lines = append(lines, "")
-		lines = append(lines, "Waiting for PR to be merged...")
-		lines = append(lines, dimText("Checking status every 30 seconds"))
-		lines = append(lines, "")
-		lines = append(lines, dimText("Press Enter to check now, 'c' to skip to cleanup"))
+		sb.WriteString("\n")
+		sb.WriteString("Waiting for PR to be merged...")
+		sb.WriteString("\n")
+		sb.WriteString(dimText("Checking status every 30 seconds"))
+		sb.WriteString("\n\n")
+		sb.WriteString(dimText("Press Enter to check now, 'c' to skip to cleanup"))
 
 	case MergeStepCleanup:
-		lines = append(lines, "Cleaning up worktree and branch...")
+		sb.WriteString("Cleaning up worktree and branch...")
 
 	case MergeStepDone:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42")).Render("✓ Merge workflow complete!"))
-		lines = append(lines, "")
-		lines = append(lines, "Worktree and branch have been cleaned up.")
-		lines = append(lines, "")
-		lines = append(lines, dimText("Press Enter to close"))
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42")).Render("✓ Merge workflow complete!"))
+		sb.WriteString("\n\n")
+		sb.WriteString("Worktree and branch have been cleaned up.")
+		sb.WriteString("\n\n")
+		sb.WriteString(dimText("Press Enter to close"))
 	}
 
 	// Show error if any
 	if p.mergeState.Error != nil {
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(
+		sb.WriteString("\n\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(
 			fmt.Sprintf("Error: %s", p.mergeState.Error.Error())))
 	}
 
-	content := strings.Join(lines, "\n")
+	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	// Use OverlayModal for dimmed background effect
+	return ui.OverlayModal(background, modal, width, height)
 }
 
 // formatRelativeTime formats a time as relative (e.g., "3m", "2h").
