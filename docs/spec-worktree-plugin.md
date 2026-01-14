@@ -121,11 +121,11 @@ This plugin bridges the gap by combining worktree orchestration with td's task m
 
 ```
 internal/plugins/worktree/
-├── plugin.go           # Plugin interface implementation
-├── model.go            # BubbleTea model and state
+├── plugin.go           # Plugin interface implementation + lifecycle
+├── model.go            # State types + helpers
 ├── view.go             # UI rendering (list view, preview pane)
 ├── view_kanban.go      # Kanban view
-├── keymap.go           # Keyboard shortcut definitions
+├── messages.go         # tea.Msg type definitions
 ├── worktree.go         # Git worktree operations
 ├── agent.go            # Agent process management
 ├── tmux.go             # tmux session management
@@ -133,9 +133,56 @@ internal/plugins/worktree/
 ├── config.go           # Configuration handling
 ├── status.go           # Status detection logic
 └── types.go            # Shared types and constants
+
+internal/keymap/bindings.go  # Add worktree plugin bindings
 ```
 
-### 3.3 Core Types
+**Note:** No separate `keymap.go` file - use sidecar's Registry-based keymap system in `internal/keymap/bindings.go`.
+
+### 3.3 Plugin Structure
+
+The plugin must implement sidecar's Plugin interface:
+
+```go
+// Plugin implements the plugin.Plugin interface
+type Plugin struct {
+    // Required by plugin.Plugin interface
+    ctx       *plugin.Context
+    focused   bool
+    width     int
+    height    int
+
+    // Worktree-specific state
+    worktrees []*Worktree
+    agents    map[string]*Agent
+
+    // Session tracking for safe cleanup
+    managedSessions map[string]bool  // session names we created
+
+    // View state
+    viewMode       ViewMode
+    activePane     FocusPane
+    selectedIdx    int
+    previewOffset  int
+
+    // Async state
+    refreshing     bool
+    lastRefresh    time.Time
+    watcher        *fsnotify.Watcher
+    stopChan       chan struct{}
+}
+
+// Required interface methods
+func (p *Plugin) ID() string           { return "worktree-manager" }
+func (p *Plugin) Name() string         { return "Worktrees" }
+func (p *Plugin) Icon() string         { return "W" }
+func (p *Plugin) IsFocused() bool      { return p.focused }
+func (p *Plugin) SetFocused(f bool)    { p.focused = f }
+func (p *Plugin) Commands() []plugin.Command { ... }  // See Section 4.5
+func (p *Plugin) FocusContext() string { ... }        // See Section 4.6
+```
+
+### 3.4 Core Types
 
 ```go
 // Worktree represents a git worktree with optional agent
@@ -170,7 +217,7 @@ type Agent struct {
     PID         int             // process ID (if available)
     StartedAt   time.Time
     LastOutput  time.Time       // last time output was detected
-    OutputBuf   *ring.Buffer    // last N lines of output
+    OutputBuf   *OutputBuffer   // last N lines of output (see 3.5)
     Status      AgentStatus
     WaitingFor  string          // prompt text if waiting
 }
@@ -195,6 +242,109 @@ type GitStats struct {
 }
 ```
 
+### 3.5 Output Buffer
+
+A simple bounded buffer for agent output (no external dependency):
+
+```go
+// OutputBuffer is a thread-safe bounded buffer for agent output
+type OutputBuffer struct {
+    mu    sync.Mutex
+    lines []string
+    cap   int
+}
+
+func NewOutputBuffer(capacity int) *OutputBuffer {
+    return &OutputBuffer{
+        lines: make([]string, 0, capacity),
+        cap:   capacity,
+    }
+}
+
+func (b *OutputBuffer) Write(content string) {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+
+    newLines := strings.Split(content, "\n")
+    b.lines = append(b.lines, newLines...)
+
+    // Trim to capacity
+    if len(b.lines) > b.cap {
+        b.lines = b.lines[len(b.lines)-b.cap:]
+    }
+}
+
+func (b *OutputBuffer) Lines() []string {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    result := make([]string, len(b.lines))
+    copy(result, b.lines)
+    return result
+}
+
+func (b *OutputBuffer) String() string {
+    return strings.Join(b.Lines(), "\n")
+}
+```
+
+### 3.6 Message Types
+
+All async operations communicate via typed messages (required for Bubble Tea):
+
+```go
+// Refresh cycle
+type RefreshMsg struct{}
+type RefreshDoneMsg struct {
+    Worktrees []*Worktree
+    Err       error
+}
+
+// File watching
+type WatchEventMsg struct {
+    Path string
+}
+type WatcherStartedMsg struct{}
+type WatcherErrorMsg struct {
+    Err error
+}
+
+// Agent output polling
+type AgentOutputMsg struct {
+    WorktreeName string
+    Output       string
+    Status       WorktreeStatus
+    WaitingFor   string
+}
+type AgentStoppedMsg struct {
+    WorktreeName string
+    Err          error
+}
+
+// tmux attach/detach
+type TmuxAttachFinishedMsg struct {
+    WorktreeName string
+    Err          error
+}
+
+// Diff loading
+type DiffLoadedMsg struct {
+    WorktreeName string
+    Content      string
+    Raw          string
+}
+
+// TD task operations
+type TaskSearchResultsMsg struct {
+    Tasks []*Task
+    Err   error
+}
+type TaskLinkedMsg struct {
+    WorktreeName string
+    TaskID       string
+    Err          error
+}
+```
+
 ---
 
 ## 4. User Interface Design
@@ -205,7 +355,7 @@ The primary view shows worktrees in a split-pane layout:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [1]Git [2]Files [3]TD [4]Convos [5]Worktrees                                │
+│ [`]Git [2]Files [3]TD [4]Convos [5]Worktrees                                │
 ├────────────────────────────────────────┬────────────────────────────────────┤
 │ Worktrees                    [List|Kan]│ Output                  Diff  Task │
 ├────────────────────────────────────────┼────────────────────────────────────┤
@@ -218,7 +368,7 @@ The primary view shows worktrees in a split-pane layout:
 │ ○ hotfix-login-timeout      ✅  42m   │                                    │
 │   claude  td-e5f6    +8 -2            │ Claude I see the existing auth     │
 │                                        │ structure. I'll add the OAuth      │
-│ ○ ui-redesign-nav           ⏸   2h    │ callback endpoint that:            │
+│ ○ ui-redesign-nav           ⏸  2h     │ callback endpoint that:            │
 │   —       td-g7h8    +0 -0            │  1. Validates the state parameter  │
 │                                        │  2. Exchanges the auth code        │
 │                                        │  3. Creates the user session       │
@@ -234,10 +384,11 @@ The primary view shows worktrees in a split-pane layout:
 │                                        │ └──────────────────────────────┘   │
 │                                        │                                    │
 ├────────────────────────────────────────┴────────────────────────────────────┤
-│ n:new  y:approve  ↵:attach  d:diff  p:push  m:merge  D:delete  ?:help       │
-│                                               🟢 2 active  💬 1 waiting 17:42│
+│ (Footer rendered by app from Commands() - plugin must NOT render footer)    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Important:** The footer is rendered by the sidecar app, not the plugin. The plugin defines available commands via `Commands()` (see Section 4.5) and the app renders appropriate hints based on context.
 
 **Status Indicators:**
 
@@ -273,11 +424,13 @@ Toggle with `v` key for column-based organization:
 │ └─────────────┘ │                 │ └─────────────┘ │                     │
 │                 │                 │                 │                     │
 ├─────────────────┴─────────────────┴─────────────────┴─────────────────────┤
-│ ←→:columns  j/k:cards  y:approve  ↵:attach  m:merge  v:list view          │
+│ (Footer rendered by app from Commands() - plugin must NOT render footer)  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Important:** Columns represent **observed state**, not user-controlled state. Users cannot drag items between columns—status changes based on agent behavior.
+
+**Note:** The kanban view may need a minimum width check. If terminal width is too narrow, auto-collapse to list view.
 
 ### 4.3 New Worktree Modal
 
@@ -324,24 +477,26 @@ Triggered by `n` key:
 
 ### 4.4 Keyboard Shortcuts
 
-#### Global
+**Note:** These shortcuts must be registered in `internal/keymap/bindings.go` with appropriate contexts. See Section 4.7 for binding definitions.
 
-| Key           | Action          |
-| ------------- | --------------- |
-| `q`, `Ctrl+c` | Quit sidecar    |
-| `Tab`         | Next plugin     |
-| `Shift+Tab`   | Previous plugin |
-| `1-9`         | Jump to plugin  |
-| `?`           | Toggle help     |
+#### Global (handled by sidecar app, not plugin)
 
-#### Worktree List
+| Key        | Action          |
+| ---------- | --------------- |
+| `q`        | Quit sidecar    |
+| `` ` ``    | Next plugin     |
+| `~`        | Previous plugin |
+| `1-9`      | Jump to plugin  |
+| `?`        | Toggle help     |
+
+#### Worktree List (context: `worktree-list`)
 
 | Key      | Action                                |
 | -------- | ------------------------------------- |
 | `j`, `↓` | Next worktree                         |
 | `k`, `↑` | Previous worktree                     |
 | `n`      | New worktree                          |
-| `N`      | New worktree with prompt              |
+| `N`      | New worktree with custom prompt       |
 | `Enter`  | Attach to tmux session                |
 | `y`      | Approve (send "y" to agent)           |
 | `Y`      | Approve all pending                   |
@@ -352,18 +507,270 @@ Triggered by `n` key:
 | `P`      | Create pull request                   |
 | `m`      | Merge workflow                        |
 | `t`      | Link/unlink td task                   |
-| `r`      | Resume paused worktree                |
+| `s`      | Resume/start agent on worktree        |
 | `R`      | Refresh all                           |
 | `/`      | Filter/search                         |
 | `v`      | Toggle list/kanban view               |
-| `h`, `l` | Switch left/right pane focus          |
-| `Tab`    | Cycle preview tabs (Output/Diff/Task) |
+| `Tab`    | Switch pane focus (list ↔ preview)    |
+| `\`      | Toggle sidebar (collapse/expand)      |
+| `h`      | Focus left pane (list)                |
+| `l`      | Focus right pane (preview)            |
+
+**Note:** Sidecar uses `r` for global refresh in root context. The worktree plugin uses `s` for resume/start to avoid conflict.
+
+**Unified Sidebar Controls:** Follows the same pattern as Git, Files, and Conversations plugins:
+- `Tab` switches focus between panes
+- `\` collapses/expands the sidebar
 
 #### When Attached to tmux
 
 | Key      | Action                       |
 | -------- | ---------------------------- |
-| `Ctrl+q` | Detach and return to sidecar |
+| `Ctrl+b d` | Detach (default tmux binding) |
+
+Users can also configure custom tmux bindings for detach.
+
+### 4.5 Commands() Implementation
+
+The plugin defines available commands for the app's footer rendering:
+
+```go
+func (p *Plugin) Commands() []plugin.Command {
+    return []plugin.Command{
+        // List view commands (shown in footer)
+        {ID: "worktree-new", Name: "New", Context: "worktree-list", Priority: 1},
+        {ID: "worktree-approve", Name: "Approve", Context: "worktree-list", Priority: 1},
+        {ID: "worktree-attach", Name: "Attach", Context: "worktree-list", Priority: 2},
+        {ID: "worktree-diff", Name: "Diff", Context: "worktree-list", Priority: 2},
+        {ID: "worktree-push", Name: "Push", Context: "worktree-list", Priority: 3},
+        {ID: "worktree-merge", Name: "Merge", Context: "worktree-list", Priority: 3},
+        {ID: "worktree-delete", Name: "Delete", Context: "worktree-list", Priority: 4},
+        {ID: "worktree-start-agent", Name: "Start", Context: "worktree-list", Priority: 2},
+        {ID: "worktree-toggle-view", Name: "View", Context: "worktree-list", Priority: 4},
+        {ID: "worktree-toggle-sidebar", Name: "Sidebar", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-focus-left", Name: "Left", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-focus-right", Name: "Right", Context: "worktree-list", Priority: 5},
+
+        // List view commands (palette only - low priority)
+        {ID: "worktree-new-with-prompt", Name: "NewPrompt", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-approve-all", Name: "ApproveAll", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-create-pr", Name: "PR", Context: "worktree-list", Priority: 4},
+        {ID: "worktree-link-task", Name: "Task", Context: "worktree-list", Priority: 4},
+        {ID: "worktree-filter", Name: "Filter", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-refresh", Name: "Refresh", Context: "worktree-list", Priority: 5},
+        {ID: "worktree-pane-focus", Name: "Focus", Context: "worktree-list", Priority: 5},
+
+        // Output pane commands
+        {ID: "worktree-scroll-up", Name: "Up", Context: "worktree-output", Priority: 1},
+        {ID: "worktree-scroll-down", Name: "Down", Context: "worktree-output", Priority: 1},
+
+        // Diff pane commands
+        {ID: "worktree-close-diff", Name: "Close", Context: "worktree-diff", Priority: 1},
+
+        // Kanban view commands
+        {ID: "worktree-list-view", Name: "List", Context: "worktree-kanban", Priority: 1},
+        {ID: "worktree-column-left", Name: "Left", Context: "worktree-kanban", Priority: 2},
+        {ID: "worktree-column-right", Name: "Right", Context: "worktree-kanban", Priority: 2},
+
+        // Modal commands
+        {ID: "worktree-cancel", Name: "Cancel", Context: "worktree-new-modal", Priority: 1},
+        {ID: "worktree-confirm-create", Name: "Create", Context: "worktree-new-modal", Priority: 2},
+        {ID: "worktree-close-modal", Name: "Close", Context: "worktree-new-modal", Priority: 1},
+    }
+}
+```
+
+**Note:** Keep command names short (1 word preferred) to prevent footer wrapping.
+
+### 4.6 FocusContext() Implementation
+
+Returns the current context for keymap binding selection:
+
+```go
+func (p *Plugin) FocusContext() string {
+    switch p.viewMode {
+    case ViewModeList:
+        switch p.activePane {
+        case PaneOutput:
+            return "worktree-output"
+        case PaneDiff:
+            return "worktree-diff"
+        case PaneTask:
+            return "worktree-task"
+        default:
+            return "worktree-list"
+        }
+    case ViewModeKanban:
+        return "worktree-kanban"
+    case ViewModeNewModal:
+        return "worktree-new-modal"
+    case ViewModeConfirmDelete:
+        return "worktree-confirm-delete"
+    default:
+        return "worktree-list"
+    }
+}
+```
+
+### 4.7 Keymap Bindings
+
+Add to `internal/keymap/bindings.go`:
+
+```go
+// Worktree plugin bindings (list view)
+{Key: "n", Command: "worktree-new", Context: "worktree-list"},
+{Key: "N", Command: "worktree-new-with-prompt", Context: "worktree-list"},
+{Key: "y", Command: "worktree-approve", Context: "worktree-list"},
+{Key: "Y", Command: "worktree-approve-all", Context: "worktree-list"},
+{Key: "enter", Command: "worktree-attach", Context: "worktree-list"},
+{Key: "d", Command: "worktree-diff", Context: "worktree-list"},
+{Key: "D", Command: "worktree-delete", Context: "worktree-list"},
+{Key: "p", Command: "worktree-push", Context: "worktree-list"},
+{Key: "P", Command: "worktree-create-pr", Context: "worktree-list"},
+{Key: "m", Command: "worktree-merge", Context: "worktree-list"},
+{Key: "t", Command: "worktree-link-task", Context: "worktree-list"},
+{Key: "s", Command: "worktree-start-agent", Context: "worktree-list"},
+{Key: "R", Command: "worktree-refresh", Context: "worktree-list"},
+{Key: "/", Command: "worktree-filter", Context: "worktree-list"},
+{Key: "v", Command: "worktree-toggle-view", Context: "worktree-list"},
+
+// Unified sidebar controls (consistent with other plugins)
+{Key: "tab", Command: "worktree-pane-focus", Context: "worktree-list"},
+{Key: "\\", Command: "worktree-toggle-sidebar", Context: "worktree-list"},
+{Key: "h", Command: "worktree-focus-left", Context: "worktree-list"},
+{Key: "l", Command: "worktree-focus-right", Context: "worktree-list"},
+
+// Modal bindings
+{Key: "escape", Command: "worktree-close-modal", Context: "worktree-new-modal"},
+{Key: "enter", Command: "worktree-confirm-create", Context: "worktree-new-modal"},
+
+// Kanban bindings
+{Key: "h", Command: "worktree-column-left", Context: "worktree-kanban"},
+{Key: "l", Command: "worktree-column-right", Context: "worktree-kanban"},
+{Key: "v", Command: "worktree-list-view", Context: "worktree-kanban"},
+```
+
+### 4.7.1 Root Context Handling
+
+Add worktree contexts to `internal/app/update.go` in `isRootContext()`:
+
+```go
+func isRootContext(ctx string) bool {
+    switch ctx {
+    case "global", "",
+        "conversations", "conversations-sidebar",
+        "git-status", "git-status-commits", "git-status-diff",
+        "file-browser-tree",
+        "td-monitor",
+        // Worktree root contexts (q = quit)
+        "worktree-list", "worktree-kanban":
+        return true
+    }
+    return false
+}
+```
+
+**Root contexts** (q = quit): `worktree-list`, `worktree-kanban`
+**Non-root contexts** (q = back): `worktree-output`, `worktree-diff`, `worktree-task`, `worktree-new-modal`, `worktree-confirm-delete`
+
+### 4.7.2 Text Input Context Handling
+
+The `worktree-new-modal` context has text input fields (branch name, task search). Add to `isTextInputContext()` in `internal/app/update.go`:
+
+```go
+func isTextInputContext(ctx string) bool {
+    switch ctx {
+    case "git-commit",
+        "conversations-search",
+        "file-browser-search", "file-browser-content-search",
+        "file-browser-quick-open", "file-browser-project-search",
+        "file-browser-file-op",
+        "td-search",
+        // Worktree text input contexts
+        "worktree-new-modal", "worktree-filter":
+        return true
+    }
+    return false
+}
+```
+
+In text input contexts, letter keys are passed through to the input field instead of triggering shortcuts.
+
+### 4.8 View() Height Constraint
+
+**Critical:** Plugins must constrain output height to prevent the header from scrolling off-screen.
+
+```go
+func (p *Plugin) View(width, height int) string {
+    p.width, p.height = width, height
+
+    var content string
+    switch p.viewMode {
+    case ViewModeList:
+        content = p.renderListView()
+    case ViewModeKanban:
+        content = p.renderKanbanView()
+    }
+
+    // Handle modals as overlays
+    if p.viewMode == ViewModeNewModal {
+        modal := p.renderNewWorktreeModal()
+        content = ui.OverlayModal(content, modal, width, height)
+    }
+
+    // CRITICAL: Constrain to allocated height (prevents header scroll-off)
+    return lipgloss.NewStyle().
+        Width(width).
+        Height(height).
+        MaxHeight(height).
+        Render(content)
+}
+```
+
+### 4.9 Split Pane Implementation
+
+Use sidecar's existing pattern from git plugin:
+
+```go
+func (p *Plugin) renderListView() string {
+    // Calculate pane widths
+    totalWidth := p.width
+    listWidth := min(60, totalWidth/3)
+    previewWidth := totalWidth - listWidth - 1 // -1 for border
+
+    // Render each pane
+    listPane := p.renderWorktreeList(listWidth, p.height)
+    previewPane := p.renderPreviewPane(previewWidth, p.height)
+
+    // Join with border
+    border := strings.Repeat("│\n", p.height)
+    return lipgloss.JoinHorizontal(
+        lipgloss.Top,
+        listPane,
+        border,
+        previewPane,
+    )
+}
+```
+
+### 4.10 Diff Rendering
+
+Reuse the existing diff rendering from the git plugin for consistency:
+
+```go
+import "github.com/yourorg/sidecar/internal/plugins/gitstatus/diff"
+
+func (p *Plugin) renderDiffPane(width, height int) string {
+    if p.currentDiff == nil {
+        return "No diff available"
+    }
+
+    // Use shared diff renderer (same as git plugin)
+    return diff.Render(p.currentDiff.Raw, width, height, p.diffOffset)
+}
+```
+
+**Note:** The diff renderer should be extracted to a shared package (e.g., `internal/ui/diff`) if not already available. See td-331dbf19 for paging implementation reference.
 
 ---
 
@@ -400,6 +807,27 @@ By default, worktrees are created as siblings to the main repository:
 - Easy to find and navigate
 - Consistent with Claude Squad's default pattern
 - Configurable via `worktreeDir` setting
+
+**Directory Writability:**
+
+If the parent directory is not writable, the plugin should fail with a clear error message instructing the user to configure `worktreeDir` manually:
+
+```go
+func (m *WorktreeManager) validateWorktreeDir() error {
+    parentDir := filepath.Dir(m.worktreeDir)
+
+    // Check if parent exists and is writable
+    if err := os.MkdirAll(m.worktreeDir, 0755); err != nil {
+        return fmt.Errorf(
+            "cannot create worktree directory %s: %w\n"+
+            "Configure 'worktreeDir' in sidecar config to use a different location",
+            m.worktreeDir, err,
+        )
+    }
+
+    return nil
+}
+```
 
 ### 5.2 Creating a Worktree
 
@@ -527,7 +955,9 @@ func (m *WorktreeManager) RemoveWorktree(name string, opts RemoveOptions) error 
         if opts.Force {
             args[1] = "-D"
         }
-        exec.Command("git", args...).Run() // Best effort
+        cmd := exec.Command("git", args...)
+        cmd.Dir = m.repoRoot  // Must run in repo root
+        cmd.Run() // Best effort
     }
 
     return nil
@@ -593,21 +1023,26 @@ func (m *WorktreeManager) ListWorktrees() ([]*Worktree, error) {
 
 ```go
 // getGitStats returns line change statistics for a worktree
-func (m *WorktreeManager) getGitStats(worktreePath string) *GitStats {
+func (m *WorktreeManager) getGitStats(wt *Worktree) *GitStats {
     stats := &GitStats{}
 
     // Get diff stat against base branch
     cmd := exec.Command("git", "diff", "--shortstat", "HEAD")
-    cmd.Dir = worktreePath
+    cmd.Dir = wt.Path
     output, err := cmd.Output()
     if err == nil {
         // Parse: " 3 files changed, 47 insertions(+), 12 deletions(-)"
         stats.parseShortstat(string(output))
     }
 
-    // Get ahead/behind counts
-    cmd = exec.Command("git", "rev-list", "--left-right", "--count", "main...HEAD")
-    cmd.Dir = worktreePath
+    // Get ahead/behind counts relative to base branch (not hardcoded main)
+    baseBranch := wt.BaseBranch
+    if baseBranch == "" {
+        baseBranch = "main" // Fallback if not set
+    }
+    cmd = exec.Command("git", "rev-list", "--left-right", "--count",
+        fmt.Sprintf("%s...HEAD", baseBranch))
+    cmd.Dir = wt.Path
     output, err = cmd.Output()
     if err == nil {
         // Parse: "5\t3" (behind, ahead)
@@ -733,16 +1168,21 @@ func (m *WorktreeManager) StartAgent(wt *Worktree, agentType AgentType) error {
         Type:        agentType,
         TmuxSession: sessionName,
         StartedAt:   time.Now(),
-        OutputBuf:   ring.New(500), // Last 500 lines
+        OutputBuf:   NewOutputBuffer(500), // Last 500 lines
     }
 
     wt.Agent = agent
-    m.agents[wt.Name] = agent
+    p.agents[wt.Name] = agent
 
-    // Start output polling
-    go m.pollAgentOutput(wt)
+    // Track session for safe cleanup (only cleanup sessions we created)
+    p.managedSessions[sessionName] = true
 
     return nil
+}
+
+// After StartAgent, return a command to begin polling:
+func (p *Plugin) startAgentPolling(wt *Worktree) tea.Cmd {
+    return p.scheduleAgentPoll(wt.Name, 500*time.Millisecond) // Initial poll faster
 }
 ```
 
@@ -767,50 +1207,91 @@ tmux has-session -t "sidecar-wt-auth-feature"
 
 ### 6.3 Capturing Agent Output
 
-This is the core mechanism for displaying live agent output in the TUI:
+**Critical:** In Bubble Tea, only the `Update` function can mutate the model. Background goroutines must return `tea.Msg`s. Direct mutation causes race conditions and UI rendering glitches.
+
+This is the core mechanism for displaying live agent output in the TUI using the proper Bubble Tea command pattern:
 
 ```go
-// pollAgentOutput continuously captures tmux pane content
-func (m *WorktreeManager) pollAgentOutput(wt *Worktree) {
-    ticker := time.NewTicker(1 * time.Second)
-    defer ticker.Stop()
+// scheduleAgentPoll returns a command that polls agent output after a delay
+func (p *Plugin) scheduleAgentPoll(worktreeName string, delay time.Duration) tea.Cmd {
+    return tea.Tick(delay, func(t time.Time) tea.Msg {
+        return pollAgentMsg{WorktreeName: worktreeName}
+    })
+}
 
-    for {
-        select {
-        case <-ticker.C:
-            if wt.Agent == nil {
-                return
+// pollAgentMsg triggers a poll for a specific worktree
+type pollAgentMsg struct {
+    WorktreeName string
+}
+
+// handlePollAgent captures output and returns an AgentOutputMsg
+func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
+    return func() tea.Msg {
+        wt := p.findWorktree(worktreeName)
+        if wt == nil || wt.Agent == nil {
+            return AgentStoppedMsg{WorktreeName: worktreeName}
+        }
+
+        output, err := p.capturePane(wt.Agent.TmuxSession)
+        if err != nil {
+            // Session may have been killed
+            if strings.Contains(err.Error(), "can't find") {
+                return AgentStoppedMsg{WorktreeName: worktreeName}
             }
+            // Schedule retry
+            return pollAgentMsg{WorktreeName: worktreeName}
+        }
 
-            output, err := m.capturePane(wt.Agent.TmuxSession)
-            if err != nil {
-                // Session may have been killed
-                if strings.Contains(err.Error(), "can't find") {
-                    wt.Agent = nil
-                    wt.Status = StatusPaused
-                    return
-                }
-                continue
-            }
+        // Detect status from output (pure function, no state mutation)
+        status := detectStatus(output)
+        waitingFor := ""
+        if status == StatusWaiting {
+            waitingFor = extractPrompt(output)
+        }
 
-            // Update buffer
-            wt.Agent.OutputBuf.Update(output)
-            wt.Agent.LastOutput = time.Now()
-
-            // Detect status from output
-            wt.Status = m.detectStatus(output)
-            if wt.Status == StatusWaiting {
-                wt.Agent.WaitingFor = m.extractPrompt(output)
-            }
-
-        case <-m.stopChan:
-            return
+        return AgentOutputMsg{
+            WorktreeName: worktreeName,
+            Output:       output,
+            Status:       status,
+            WaitingFor:   waitingFor,
         }
     }
 }
 
+// In Update(), handle the messages:
+func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
+    switch msg := msg.(type) {
+    case pollAgentMsg:
+        // Check if we should skip polling (user attached to session)
+        if p.attachedSession == msg.WorktreeName {
+            // Pause polling while user is attached
+            return p, nil
+        }
+        return p, p.handlePollAgent(msg.WorktreeName)
+
+    case AgentOutputMsg:
+        // Update state here (safe - we're in Update)
+        if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+            wt.Agent.OutputBuf.Write(msg.Output)
+            wt.Agent.LastOutput = time.Now()
+            wt.Agent.WaitingFor = msg.WaitingFor
+            wt.Status = msg.Status
+        }
+        // Schedule next poll (1 second interval)
+        return p, p.scheduleAgentPoll(msg.WorktreeName, 1*time.Second)
+
+    case AgentStoppedMsg:
+        if wt := p.findWorktree(msg.WorktreeName); wt != nil {
+            wt.Agent = nil
+            wt.Status = StatusPaused
+        }
+        return p, nil
+    }
+    // ...
+}
+
 // capturePane gets the last N lines from a tmux pane
-func (m *WorktreeManager) capturePane(sessionName string) (string, error) {
+func (p *Plugin) capturePane(sessionName string) (string, error) {
     // -p: Print to stdout (instead of buffer)
     // -S: Start line (-200 = last 200 lines)
     // -t: Target session
@@ -901,19 +1382,38 @@ When the user presses Enter on a worktree, sidecar should suspend itself and att
 
 ```go
 // AttachToSession suspends sidecar and attaches to the agent's tmux session
-func (m *Model) AttachToSession(wt *Worktree) tea.Cmd {
+func (p *Plugin) AttachToSession(wt *Worktree) tea.Cmd {
     if wt.Agent == nil {
         return nil
     }
+
+    // Track that we're attached (pauses polling - see Section 6.3)
+    p.attachedSession = wt.Name
 
     // Use tea.ExecProcess to suspend Bubble Tea and run tmux attach
     c := exec.Command("tmux", "attach-session", "-t", wt.Agent.TmuxSession)
 
     return tea.ExecProcess(c, func(err error) tea.Msg {
-        return AttachFinishedMsg{Err: err}
+        return TmuxAttachFinishedMsg{WorktreeName: wt.Name, Err: err}
     })
 }
+
+// In Update(), handle attach completion:
+case TmuxAttachFinishedMsg:
+    // Clear attached state
+    p.attachedSession = ""
+    // Resume polling and refresh to capture what happened while attached
+    var cmds []tea.Cmd
+    if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+        cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 0))
+    }
+    cmds = append(cmds, p.refresh())
+    return p, tea.Batch(cmds...)
 ```
+
+**Polling Pause During Attach:**
+
+When the user attaches to a tmux session, polling is paused for that agent. This reduces CPU/IO during interactive use. Polling resumes automatically when the user detaches (detected via `TmuxAttachFinishedMsg`).
 
 **In BubbleTea, `tea.ExecProcess` handles:**
 
@@ -922,7 +1422,7 @@ func (m *Model) AttachToSession(wt *Worktree) tea.Cmd {
 3. Running the external command
 4. Restoring TUI when command exits
 
-The user can detach from tmux using `Ctrl+b d` (default) or a custom binding like `Ctrl+q`.
+The user can detach from tmux using `Ctrl+b d` (default tmux binding).
 
 **Reference:** See [BubbleTea ExecProcess documentation](https://pkg.go.dev/github.com/charmbracelet/bubbletea#ExecProcess)
 
@@ -930,23 +1430,24 @@ The user can detach from tmux using `Ctrl+b d` (default) or a custom binding lik
 
 ```go
 // Cleanup stops all agents and optionally removes tmux sessions
-func (m *WorktreeManager) Cleanup(removeSessions bool) error {
-    for name, agent := range m.agents {
-        // Stop polling
-        close(agent.stopChan)
-
+func (p *Plugin) Cleanup(removeSessions bool) error {
+    for name, agent := range p.agents {
         if removeSessions {
-            // Kill tmux session
-            exec.Command("tmux", "kill-session", "-t", agent.TmuxSession).Run()
+            // Only kill sessions we created (tracked in managedSessions)
+            if p.managedSessions[agent.TmuxSession] {
+                exec.Command("tmux", "kill-session", "-t", agent.TmuxSession).Run()
+                delete(p.managedSessions, agent.TmuxSession)
+            }
         }
 
-        delete(m.agents, name)
+        delete(p.agents, name)
     }
     return nil
 }
 
-// CleanupOrphanedSessions removes sidecar-wt-* sessions without running worktrees
-func CleanupOrphanedSessions() error {
+// CleanupOrphanedSessions removes sidecar-wt-* sessions that we created
+// but no longer have corresponding worktrees
+func (p *Plugin) CleanupOrphanedSessions() error {
     cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
     output, err := cmd.Output()
     if err != nil {
@@ -954,15 +1455,34 @@ func CleanupOrphanedSessions() error {
     }
 
     for _, session := range strings.Split(string(output), "\n") {
-        if strings.HasPrefix(session, "sidecar-wt-") {
-            // Check if corresponding worktree exists
-            // If not, kill the session
+        session = strings.TrimSpace(session)
+        if session == "" {
+            continue
+        }
+
+        // Only cleanup sessions we explicitly created and tracked
+        // This prevents accidentally killing user sessions named sidecar-wt-*
+        if !p.managedSessions[session] {
+            continue
+        }
+
+        // Check if corresponding worktree still exists
+        worktreeName := strings.TrimPrefix(session, "sidecar-wt-")
+        if p.findWorktree(worktreeName) == nil {
             exec.Command("tmux", "kill-session", "-t", session).Run()
+            delete(p.managedSessions, session)
         }
     }
     return nil
 }
 ```
+
+**Session Tracking Safety:**
+
+By tracking session IDs in `managedSessions`, we ensure:
+1. Only sessions created by this sidecar instance are cleaned up
+2. User sessions that happen to match `sidecar-wt-*` naming are never killed
+3. Sessions persist across sidecar restarts for resume functionality
 
 **tmux commands used:**
 
@@ -1079,7 +1599,7 @@ func (a *Agent) isAgentActive() bool {
 
 // deriveStatus combines multiple signals
 func (a *Agent) DeriveStatus() WorktreeStatus {
-    if a.waitingFor != "" {
+    if a.WaitingFor != "" {
         return StatusWaiting
     }
     if a.isAgentActive() {
@@ -1133,7 +1653,294 @@ func (m *WorktreeManager) watchAgentEvents(wt *Worktree) {
 }
 ```
 
-**Reference:** See [Claude Code hooks reference](https://code.claude.com/docs/en/hooks) for full documentation.
+**Reference:** See [Claude Code hooks documentation](https://docs.anthropic.com/en/docs/claude-code/hooks) for details.
+
+---
+
+## 7A. Plugin Lifecycle Methods
+
+### 7A.1 Start() Method
+
+The `Start()` method initializes async operations when the plugin begins:
+
+```go
+func (p *Plugin) Start() tea.Cmd {
+    return tea.Batch(
+        p.refresh(),           // Load worktrees
+        p.startWatcher(),      // Watch for git changes
+        p.reconnectAgents(),   // Find existing tmux sessions
+    )
+}
+
+func (p *Plugin) refresh() tea.Cmd {
+    return func() tea.Msg {
+        worktrees, err := p.listWorktrees()
+        return RefreshDoneMsg{Worktrees: worktrees, Err: err}
+    }
+}
+
+func (p *Plugin) startWatcher() tea.Cmd {
+    return func() tea.Msg {
+        // Watch .git/worktrees for changes
+        watcher, err := fsnotify.NewWatcher()
+        if err != nil {
+            return WatcherErrorMsg{Err: err}
+        }
+        p.watcher = watcher
+
+        go func() {
+            for event := range watcher.Events {
+                // Debounce and send refresh message via program.Send()
+                _ = event
+            }
+        }()
+
+        worktreesDir := filepath.Join(p.ctx.WorkDir, ".git", "worktrees")
+        watcher.Add(worktreesDir)
+        return WatcherStartedMsg{}
+    }
+}
+
+func (p *Plugin) reconnectAgents() tea.Cmd {
+    return func() tea.Msg {
+        // Find existing sidecar-wt-* tmux sessions and reconnect
+        cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+        output, _ := cmd.Output()
+
+        var cmds []tea.Cmd
+        for _, session := range strings.Split(string(output), "\n") {
+            if strings.HasPrefix(session, "sidecar-wt-") {
+                worktreeName := strings.TrimPrefix(session, "sidecar-wt-")
+                // Start polling for reconnected sessions
+                cmds = append(cmds, p.scheduleAgentPoll(worktreeName, 0))
+            }
+        }
+        return reconnectedAgentsMsg{Cmds: cmds}
+    }
+}
+```
+
+### 7A.2 Stop() Method
+
+Cleanup when the plugin stops:
+
+```go
+func (p *Plugin) Stop() {
+    // Stop file watcher
+    if p.watcher != nil {
+        p.watcher.Close()
+    }
+
+    // Note: Don't kill tmux sessions on Stop() - they should persist
+    // for agent resume functionality. Only cleanup on explicit user action.
+}
+```
+
+### 7A.3 Update() Handler Structure
+
+Complete Update() implementation showing message handling:
+
+```go
+func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
+    switch msg := msg.(type) {
+    case tea.KeyMsg:
+        return p.handleKey(msg)
+    case tea.MouseMsg:
+        return p.handleMouse(msg)
+
+    // Refresh cycle
+    case RefreshMsg:
+        p.refreshing = true
+        return p, p.refresh()
+    case RefreshDoneMsg:
+        p.refreshing = false
+        p.lastRefresh = time.Now()
+        if msg.Err != nil {
+            return p, p.showToast(msg.Err.Error())
+        }
+        p.worktrees = msg.Worktrees
+        return p, nil
+
+    // Agent output polling (see Section 6.3)
+    case pollAgentMsg:
+        if p.attachedSession == msg.WorktreeName {
+            return p, nil // Pause while attached
+        }
+        return p, p.handlePollAgent(msg.WorktreeName)
+    case AgentOutputMsg:
+        if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+            wt.Agent.OutputBuf.Write(msg.Output)
+            wt.Agent.LastOutput = time.Now()
+            wt.Agent.WaitingFor = msg.WaitingFor
+            wt.Status = msg.Status
+        }
+        return p, p.scheduleAgentPoll(msg.WorktreeName, 1*time.Second)
+    case AgentStoppedMsg:
+        if wt := p.findWorktree(msg.WorktreeName); wt != nil {
+            wt.Agent = nil
+            wt.Status = StatusPaused
+        }
+        return p, nil
+
+    // Tmux attach (see Section 6.5)
+    case TmuxAttachFinishedMsg:
+        p.attachedSession = ""
+        return p, p.refresh()
+
+    // Diff loading
+    case DiffLoadedMsg:
+        if wt := p.findWorktree(msg.WorktreeName); wt != nil {
+            p.currentDiff = &DiffContent{
+                WorktreeName: msg.WorktreeName,
+                Content:      msg.Content,
+                Raw:          msg.Raw,
+            }
+        }
+        return p, nil
+
+    // App-level messages
+    case app.PluginFocusedMsg:
+        return p, p.refresh()
+    case app.RefreshMsg:
+        return p, p.refresh()
+    }
+
+    return p, nil
+}
+```
+
+---
+
+## 7B. Inter-Plugin Communication
+
+### 7B.1 Navigating to Files
+
+Open a file in the file browser plugin:
+
+```go
+func (p *Plugin) openInFileBrowser(worktreePath, filePath string) tea.Cmd {
+    return tea.Batch(
+        app.FocusPlugin("file-browser"),
+        func() tea.Msg {
+            // Use relative path from worktree
+            return filebrowser.NavigateToFileMsg{Path: filePath}
+        },
+    )
+}
+```
+
+### 7B.2 Showing Diffs in Git Plugin
+
+Navigate to the git plugin to show a specific file's diff:
+
+```go
+func (p *Plugin) showInGitPlugin(path string) tea.Cmd {
+    return tea.Batch(
+        app.FocusPlugin("git-status"),
+        func() tea.Msg {
+            return gitstatus.ShowDiffMsg{Path: path}
+        },
+    )
+}
+```
+
+### 7B.3 Event Bus Integration
+
+Subscribe to events from other plugins:
+
+```go
+func (p *Plugin) Init(ctx *plugin.Context) error {
+    p.ctx = ctx
+
+    // Subscribe to git events for auto-refresh
+    if ctx.EventBus != nil {
+        gitEvents := ctx.EventBus.Subscribe("git:status-changed")
+        go func() {
+            for range gitEvents {
+                // Trigger refresh when git status changes
+                // This catches external commits, pushes, etc.
+            }
+        }()
+    }
+
+    return nil
+}
+
+// Publish worktree events for other plugins
+func (p *Plugin) publishAgentStatus(wt *Worktree) {
+    if p.ctx.EventBus == nil {
+        return
+    }
+    p.ctx.EventBus.Publish("worktree:agent-status", map[string]interface{}{
+        "worktree": wt.Name,
+        "status":   wt.Status.String(),
+    })
+}
+```
+
+---
+
+## 7C. DiagnosticProvider Implementation
+
+Plugins can implement optional diagnostics for health checks:
+
+```go
+func (p *Plugin) Diagnostics() []plugin.Diagnostic {
+    var diags []plugin.Diagnostic
+
+    // Check tmux availability
+    if _, err := exec.LookPath("tmux"); err != nil {
+        diags = append(diags, plugin.Diagnostic{
+            Level:   plugin.DiagnosticError,
+            Message: "tmux not found in PATH",
+            Hint:    "Install tmux: brew install tmux",
+        })
+    }
+
+    // Check for orphaned sessions
+    orphaned := p.countOrphanedSessions()
+    if orphaned > 0 {
+        diags = append(diags, plugin.Diagnostic{
+            Level:   plugin.DiagnosticWarning,
+            Message: fmt.Sprintf("%d orphaned tmux sessions", orphaned),
+            Hint:    "Press 'c' to cleanup",
+        })
+    }
+
+    // Check worktree directory writability
+    if err := p.validateWorktreeDir(); err != nil {
+        diags = append(diags, plugin.Diagnostic{
+            Level:   plugin.DiagnosticError,
+            Message: "Worktree directory not writable",
+            Hint:    err.Error(),
+        })
+    }
+
+    return diags
+}
+
+func (p *Plugin) countOrphanedSessions() int {
+    cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+    output, err := cmd.Output()
+    if err != nil {
+        return 0
+    }
+
+    count := 0
+    for _, session := range strings.Split(string(output), "\n") {
+        if strings.HasPrefix(session, "sidecar-wt-") {
+            // Only count sessions we created
+            if p.managedSessions[session] {
+                worktreeName := strings.TrimPrefix(session, "sidecar-wt-")
+                if p.findWorktree(worktreeName) == nil {
+                    count++
+                }
+            }
+        }
+    }
+    return count
+}
+```
 
 ---
 
@@ -1146,7 +1953,7 @@ When using worktrees, each worktree needs to access the **same** td database as 
 **Problem:**
 
 ```
-~/code/sidecar/.todos/db.sqlite          # Main repo's tasks
+~/code/sidecar/.todos/issues.db          # Main repo's tasks
 ~/code/sidecar-worktrees/feature/.todos/ # Empty! Different database
 ```
 
@@ -1156,29 +1963,47 @@ When creating a worktree, write a `.td-root` file that points to the main repo:
 
 ```go
 // setupTDRoot creates a .td-root file pointing to the main repo
-func (m *WorktreeManager) setupTDRoot(worktreePath string) error {
+func (p *Plugin) setupTDRoot(worktreePath string) error {
     tdRootPath := filepath.Join(worktreePath, ".td-root")
-    return os.WriteFile(tdRootPath, []byte(m.repoRoot), 0644)
+    return os.WriteFile(tdRootPath, []byte(p.repoRoot), 0644)
 }
 ```
 
-**Required td modification:**
+**.td-root file format:**
+```
+# Single line containing absolute path to main worktree
+/Users/dev/code/sidecar
+```
+
+**Required td modification in `internal/db/db.go`:**
 
 ```go
-// In td's database resolution logic:
-func resolveDBPath() string {
-    // Check for .td-root file
-    if content, err := os.ReadFile(".td-root"); err == nil {
-        rootPath := strings.TrimSpace(string(content))
-        return filepath.Join(rootPath, ".todos")
+const dbFile = ".todos/issues.db"
+
+func Open(baseDir string) (*DB, error) {
+    // Check for worktree redirection
+    tdRootPath := filepath.Join(baseDir, ".td-root")
+    if content, err := os.ReadFile(tdRootPath); err == nil {
+        baseDir = strings.TrimSpace(string(content))
     }
 
-    // Fall back to current directory
-    return ".todos"
+    dbPath := filepath.Join(baseDir, dbFile)
+    // ... rest of Open() implementation
 }
 ```
 
-This is a ~5-10 line change to td that enables worktree support.
+**Important:** The `.td-root` redirection must apply to **all** td file paths, not just the database:
+- Database: `.todos/issues.db`
+- Config: `.todos/config/`
+- Sessions: `.todos/sessions/<branch>/<agent-pid>.json`
+- Analytics: `.todos/analytics/`
+
+**Note:** TD already has branch-scoped sessions at `.todos/sessions/<branch>/`, providing automatic isolation per worktree branch.
+
+**Backward Compatibility:** This change is fully backward-compatible with standalone td:
+- If `.td-root` doesn't exist, `os.ReadFile` returns an error and the code continues with the original `baseDir`
+- td used outside of worktrees (normal git repos) will work exactly as before
+- No new flags, environment variables, or configuration required for standalone use
 
 ### 8.2 Linking Tasks to Worktrees
 
@@ -1246,31 +2071,83 @@ func (m *WorktreeManager) tdStartTask(worktreePath, taskID string) error {
 
 ### 8.4 Providing Task Context to Agents
 
-When starting an agent, inject task context:
+When starting an agent, inject task context. The recommended approach is to fetch the task context in Go and pass it directly, avoiding shell expansion issues.
 
 ```go
 // getAgentCommand builds the command to start an agent with context
-func (m *WorktreeManager) getAgentCommand(agentType AgentType, wt *Worktree) string {
+func (p *Plugin) getAgentCommand(agentType AgentType, wt *Worktree) (string, error) {
+    // Get task context if linked
+    var taskContext string
+    if wt.TaskID != "" {
+        ctx, err := p.getTaskContext(wt.TaskID)
+        if err == nil {
+            taskContext = ctx
+        }
+    }
+
     switch agentType {
     case AgentClaude:
-        if wt.TaskID != "" {
-            // Start claude with task context
-            return fmt.Sprintf("claude --prompt \"$(td show %s)\"", wt.TaskID)
+        if taskContext != "" {
+            // Claude accepts the prompt as an argument
+            // Escape for shell safety
+            return fmt.Sprintf("claude %q", taskContext), nil
         }
-        return "claude"
+        return "claude", nil
 
     case AgentCodex:
-        return "codex"
+        return "codex", nil
 
     case AgentAider:
-        return "aider"
+        return "aider", nil
 
     case AgentGemini:
-        return "gemini"
+        return "gemini", nil
 
     default:
-        return m.config.CustomAgentCommand
+        return p.config.CustomAgentCommand, nil
     }
+}
+
+// getTaskContext fetches task details from td
+func (p *Plugin) getTaskContext(taskID string) (string, error) {
+    cmd := exec.Command("td", "show", taskID, "--format", "json")
+    cmd.Dir = p.repoRoot
+    output, err := cmd.Output()
+    if err != nil {
+        return "", err
+    }
+
+    var task struct {
+        Title       string `json:"title"`
+        Description string `json:"description"`
+        Context     string `json:"context"`
+    }
+    if err := json.Unmarshal(output, &task); err != nil {
+        return "", err
+    }
+
+    // Build a concise prompt
+    return fmt.Sprintf("Task: %s\n\n%s", task.Title, task.Description), nil
+}
+```
+
+**Agent Session Identity:**
+
+For proper td integration, set `TD_SESSION_ID` when launching agents. This ensures logs and handoffs are correctly scoped:
+
+```go
+func (p *Plugin) startAgentInTmux(wt *Worktree, agentCmd string) error {
+    sessionName := fmt.Sprintf("sidecar-wt-%s", sanitizeName(wt.Name))
+
+    // Set TD_SESSION_ID environment variable
+    envCmd := fmt.Sprintf("export TD_SESSION_ID=%s", sessionName)
+
+    // Create session and set environment
+    exec.Command("tmux", "new-session", "-d", "-s", sessionName, "-c", wt.Path).Run()
+    exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
+
+    // Then start the agent
+    return exec.Command("tmux", "send-keys", "-t", sessionName, agentCmd, "Enter").Run()
 }
 ```
 
@@ -1279,23 +2156,11 @@ func (m *WorktreeManager) getAgentCommand(agentType AgentType, wt *Worktree) str
 For the fuzzy task search in the new worktree modal:
 
 ```go
-// SearchTasks returns tasks matching a query
-func (m *WorktreeManager) SearchTasks(query string) ([]*td.Task, error) {
-    // Use td's query language
-    cmd := exec.Command("td", "query", fmt.Sprintf("title ~ '%s'", query))
-    cmd.Dir = m.repoRoot
-    output, err := cmd.Output()
-    if err != nil {
-        return nil, err
-    }
-
-    return parseTDOutput(output)
-}
-
-// GetOpenTasks returns all non-closed tasks
-func (m *WorktreeManager) GetOpenTasks() ([]*td.Task, error) {
-    cmd := exec.Command("td", "list", "--status", "open,in_progress", "--json")
-    cmd.Dir = m.repoRoot
+// GetOpenTasks returns all non-closed tasks for fuzzy filtering in UI
+func (p *Plugin) GetOpenTasks() ([]*Task, error) {
+    // Get all open tasks as JSON, then filter in Go for faster fuzzy matching
+    cmd := exec.Command("td", "list", "--json", "--status", "open,in_progress")
+    cmd.Dir = p.repoRoot
     output, err := cmd.Output()
     if err != nil {
         return nil, err
@@ -1303,7 +2168,43 @@ func (m *WorktreeManager) GetOpenTasks() ([]*td.Task, error) {
 
     return parseTDJSON(output)
 }
+
+// SearchTasks filters tasks by query (client-side fuzzy matching)
+func (p *Plugin) SearchTasks(query string, allTasks []*Task) []*Task {
+    if query == "" {
+        return allTasks
+    }
+
+    query = strings.ToLower(query)
+    var matches []*Task
+    for _, task := range allTasks {
+        // Simple contains match; could use fuzzy matching library
+        if strings.Contains(strings.ToLower(task.Title), query) ||
+           strings.Contains(strings.ToLower(task.ID), query) {
+            matches = append(matches, task)
+        }
+    }
+    return matches
+}
+
+// Task represents a td task for the UI
+type Task struct {
+    ID          string `json:"id"`
+    Title       string `json:"title"`
+    Status      string `json:"status"`
+    Description string `json:"description,omitempty"`
+}
+
+func parseTDJSON(data []byte) ([]*Task, error) {
+    var tasks []*Task
+    if err := json.Unmarshal(data, &tasks); err != nil {
+        return nil, err
+    }
+    return tasks, nil
+}
 ```
+
+**Note:** Consider reusing td parsing logic from `internal/plugins/tdmonitor` if available, to avoid duplication.
 
 ---
 
@@ -1347,45 +2248,62 @@ func (m *WorktreeManager) saveMetadata(wt *Worktree) error {
 
 ### 9.2 Runtime State
 
-Runtime state (agents, sessions) is kept in memory and reconstructed on startup:
+Runtime state (agents, sessions) is kept in memory and reconstructed on startup.
+
+**Important:** Session reconnection happens via the `reconnectAgents()` function in `Start()` (see Section 7A.1), which properly uses the tea.Cmd pattern instead of spawning goroutines directly.
 
 ```go
-// Restore reconnects to existing tmux sessions on startup
-func (m *WorktreeManager) Restore() error {
-    worktrees, err := m.ListWorktrees()
-    if err != nil {
-        return err
-    }
+// reconnectAgents is called from Start() and returns commands to start polling
+// for any existing tmux sessions. See Section 7A.1 for full implementation.
+func (p *Plugin) reconnectAgents() tea.Cmd {
+    return func() tea.Msg {
+        cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+        output, _ := cmd.Output()
 
-    for _, wt := range worktrees {
-        sessionName := fmt.Sprintf("sidecar-wt-%s", sanitizeName(wt.Name))
-
-        // Check if tmux session exists
-        cmd := exec.Command("tmux", "has-session", "-t", sessionName)
-        if cmd.Run() == nil {
-            // Session exists, reconnect
-            agent := &Agent{
-                TmuxSession: sessionName,
-                StartedAt:   time.Now(), // Unknown actual start
+        var pollingCmds []tea.Cmd
+        for _, session := range strings.Split(string(output), "\n") {
+            session = strings.TrimSpace(session)
+            if !strings.HasPrefix(session, "sidecar-wt-") {
+                continue
             }
 
-            // Load agent type from metadata
-            meta := m.loadMetadata(wt.Path)
-            if meta != nil {
-                agent.Type = meta.AgentType
+            worktreeName := strings.TrimPrefix(session, "sidecar-wt-")
+
+            // Load metadata if available
+            if wt := p.findWorktree(worktreeName); wt != nil {
+                agent := &Agent{
+                    TmuxSession: session,
+                    StartedAt:   time.Now(), // Unknown actual start
+                    OutputBuf:   NewOutputBuffer(500),
+                }
+
+                meta := p.loadMetadata(wt.Path)
+                if meta != nil {
+                    agent.Type = meta.AgentType
+                }
+
+                wt.Agent = agent
+                p.agents[wt.Name] = agent
+
+                // Track as managed (for safe cleanup)
+                p.managedSessions[session] = true
+
+                // Schedule polling via tea.Cmd (NOT goroutine)
+                pollingCmds = append(pollingCmds,
+                    p.scheduleAgentPoll(worktreeName, 0))
             }
-
-            wt.Agent = agent
-            m.agents[wt.Name] = agent
-
-            // Start polling
-            go m.pollAgentOutput(wt)
         }
-    }
 
-    return nil
+        return reconnectedAgentsMsg{Cmds: pollingCmds}
+    }
 }
+
+// Handle in Update():
+case reconnectedAgentsMsg:
+    return p, tea.Batch(msg.Cmds...)
 ```
+
+**Note:** Never call `go pollAgentOutput()` directly. Always use the tea.Cmd pattern to ensure Bubble Tea's state management remains consistent.
 
 ---
 
@@ -1405,8 +2323,7 @@ Configuration is part of sidecar's main config file (`~/.config/sidecar/config.j
       "defaultAgent": "claude",
       "agents": {
         "claude": {
-          "command": "claude",
-          "promptFlag": "--prompt"
+          "command": "claude"
         },
         "codex": {
           "command": "codex"
@@ -1657,7 +2574,17 @@ func (m *WorktreeManager) RepairWorktree(path string) error {
 - [ ] Git stats (additions, deletions)
 - [ ] Push to remote
 
-**Estimated effort:** 1-2 weeks
+### Phase 1.5: TUI Loop Validation
+
+**Goal:** Ensure view rendering works correctly before adding complexity
+
+**Features:**
+
+- [ ] Test list view with mock data
+- [ ] Test kanban ↔ list view toggle
+- [ ] Test focus handling across panes
+- [ ] Verify `View(width, height)` height constraints
+- [ ] Add min-width check for kanban (auto-collapse to list if too narrow)
 
 ### Phase 2: Agent Integration
 
@@ -1666,13 +2593,12 @@ func (m *WorktreeManager) RepairWorktree(path string) error {
 **Features:**
 
 - [ ] Start agent in tmux session
-- [ ] Capture and display agent output
+- [ ] Capture and display agent output (using tea.Cmd/Msg pattern)
 - [ ] Status detection (active/waiting/done)
 - [ ] Approve/reject prompts from UI
-- [ ] Attach to tmux session
+- [ ] Attach to tmux session (with polling pause)
 - [ ] Resume on existing worktrees
-
-**Estimated effort:** 2-3 weeks
+- [ ] Session tracking for safe cleanup
 
 ### Phase 3: TD Integration
 
@@ -1685,10 +2611,9 @@ func (m *WorktreeManager) RepairWorktree(path string) error {
 - [ ] Fuzzy task search in create modal
 - [ ] Auto-start td task
 - [ ] Display task info in preview pane
+- [ ] TD_SESSION_ID injection for agents
 
-**Estimated effort:** 1 week
-
-**Note:** Requires small modification to td
+**Note:** Requires small modification to td's `internal/db/db.go` for `.td-root` support.
 
 ### Phase 4: Workflow Polish
 
@@ -1703,8 +2628,6 @@ func (m *WorktreeManager) RepairWorktree(path string) error {
 - [ ] Conflict detection
 - [ ] Activity timeline/log
 
-**Estimated effort:** 1-2 weeks
-
 ### Phase 5: Advanced Features
 
 **Goal:** Power user features
@@ -1717,8 +2640,7 @@ func (m *WorktreeManager) RepairWorktree(path string) error {
 - [ ] Claude Code hooks integration
 - [ ] Keyboard customization
 - [ ] Project-level config
-
-**Estimated effort:** 2-3 weeks
+- [ ] DiagnosticProvider implementation
 
 ---
 
