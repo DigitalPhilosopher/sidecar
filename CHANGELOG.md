@@ -2,6 +2,17 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.14.4] - 2026-01-14
+
+### Bug Fixes
+- Fixed layout rendering issues where plugin header would scroll off-screen
+- Improved width calculations to properly account for borders and padding
+- Added ANSI-aware truncation to handle escape codes correctly
+- Added tab expansion for proper alignment in terminal output
+
+### Dependencies
+- Updated embedded td to latest version
+
 ## [v0.14.3] - 2026-01-14
 
 ### Bug Fixes
