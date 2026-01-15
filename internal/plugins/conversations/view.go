@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 // ansiBackgroundRegex matches ANSI background color escape sequences including:
@@ -2084,7 +2085,7 @@ func (p *Plugin) renderToolUseBlock(block adapter.ContentBlock, maxWidth int) []
 	}
 
 	if len(toolHeader) > maxWidth-2 {
-		toolHeader = toolHeader[:maxWidth-5] + "..."
+		toolHeader = ui.TruncateString(toolHeader, maxWidth-2)
 	}
 
 	expanded := p.expandedToolResults[block.ToolUseID]
@@ -2107,8 +2108,8 @@ func (p *Plugin) renderToolUseBlock(block adapter.ContentBlock, maxWidth int) []
 
 		// Truncate before prettifying to prevent memory issues with large outputs
 		const maxChars = 10000
-		if len(output) > maxChars {
-			output = output[:maxChars]
+		if len([]rune(output)) > maxChars {
+			output = string([]rune(output)[:maxChars])
 		}
 
 		// Try to prettify JSON output
@@ -2122,7 +2123,7 @@ func (p *Plugin) renderToolUseBlock(block adapter.ContentBlock, maxWidth int) []
 		}
 		for _, line := range outputLines {
 			if len(line) > maxWidth-4 {
-				line = line[:maxWidth-7] + "..."
+				line = ui.TruncateString(line, maxWidth-4)
 			}
 			lines = append(lines, styles.Muted.Render("  "+line))
 		}
