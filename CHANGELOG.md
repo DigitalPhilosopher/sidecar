@@ -2,6 +2,17 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.14.7] - 2026-01-14
+
+### Features
+- Auto-add sidecar state files (.sidecar-agent, .sidecar-task, .td-root) to .gitignore on worktree creation
+
+### Bug Fixes
+- Fixed nil pointer in stageAllAndCommit when git tree fails to initialize
+- Clear preview pane when worktree is deleted to prevent stale content
+- Cancel merge workflow on error instead of proceeding with broken state
+- Show "No worktree selected" message when worktree list is empty
+
 ## [v0.14.6] - 2026-01-14
 
 ### Bug Fixes
