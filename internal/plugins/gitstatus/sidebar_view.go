@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/styles"
 )
 
@@ -862,9 +863,11 @@ func truncateStyledLine(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	// Use lipgloss to measure and truncate
-	style := lipgloss.NewStyle().MaxWidth(maxWidth)
-	return style.Render(s)
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+	// Use ANSI-aware truncation (not MaxWidth which wraps)
+	return ansi.Truncate(s, maxWidth, "")
 }
 
 // truncateDiffPath shortens a path to fit width.

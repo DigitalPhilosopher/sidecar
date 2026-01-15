@@ -266,13 +266,14 @@ func (p *Plugin) wrapDiffContent(content string, paneHeight int) string {
 func (p *Plugin) renderDiffTwoPane() string {
 	p.calculatePaneWidths()
 
-	// Calculate pane height: total - pane border (2 lines)
-	paneHeight := p.height - 2
+	// Pane height for panels (outer dimensions including borders)
+	// Note: App footer is rendered by the app, not the plugin
+	paneHeight := p.height
 	if paneHeight < 4 {
 		paneHeight = 4
 	}
 
-	// Inner content height = pane height - header lines (2)
+	// Inner content height (excluding borders and header lines)
 	innerHeight := paneHeight - 2
 	if innerHeight < 1 {
 		innerHeight = 1
@@ -287,23 +288,18 @@ func (p *Plugin) renderDiffTwoPane() string {
 	p.mouseHandler.HitMap.AddRect(regionDiffPane, diffX, 0, p.diffPaneWidth, p.height, nil)
 
 	// Sidebar is inactive (showing files), diff pane is active
-	sidebarBorder := styles.PanelInactive
-	diffBorder := styles.PanelActive
+	sidebarActive := false
+	diffActive := true
 
 	sidebarContent := p.renderSidebar(innerHeight)
 	diffContent := p.renderFullDiffContent(innerHeight)
 
-	leftPane := sidebarBorder.
-		Width(p.sidebarWidth).
-		Height(paneHeight).
-		Render(sidebarContent)
+	// Apply gradient border styles (consistent with renderThreePaneView)
+	leftPane := styles.RenderPanel(sidebarContent, p.sidebarWidth, paneHeight, sidebarActive)
 
 	divider := p.renderDivider(paneHeight)
 
-	rightPane := diffBorder.
-		Width(p.diffPaneWidth).
-		Height(paneHeight).
-		Render(diffContent)
+	rightPane := styles.RenderPanel(diffContent, p.diffPaneWidth, paneHeight, diffActive)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, divider, rightPane)
 }
