@@ -2,6 +2,15 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.16.3] - 2026-01-14
+
+### Improvements
+- Improved kanban board in worktrees plugin
+
+### Bug Fixes
+- Use launcher script for agent prompts to avoid shell escaping issues
+- Change 'c' key in merge workflow to skip cleanup (keep worktree) instead of advancing to cleanup
+
 ## [v0.16.2] - 2026-01-14
 
 ### Bug Fixes
