@@ -152,24 +152,24 @@ function FilesPane() {
 function ConversationsPane() {
   return (
     <>
-      <p className="sc-sectionTitle">Recent Sessions</p>
+      <p className="sc-sectionTitle">All Sessions <span className="sc-lineDim">chronological</span></p>
       <div className="sc-list">
         <div className="sc-item sc-itemActive">
           <span className="sc-bullet sc-bulletGreen" />
-          <span>auth-flow-impl | 24m ago</span>
+          <span>auth-flow | <span className="sc-lineYellow">Claude</span> | 24m</span>
         </div>
         <div className="sc-item">
           <span className="sc-bullet sc-bulletBlue" />
-          <span>fix-rate-limit | 2h ago</span>
+          <span>rate-limit | <span className="sc-linePink">Cursor</span> | 2h</span>
         </div>
         <div className="sc-item">
           <span className="sc-bullet sc-bulletPink" />
-          <span>refactor-plugins | 1d ago</span>
+          <span>refactor | <span className="sc-lineBlue">Gemini</span> | 1d</span>
         </div>
       </div>
       <div style={{ height: 12 }} />
       <div className="sc-codeBlock">
-        <div className="sc-lineDim">auth-flow-impl | Claude Code</div>
+        <div className="sc-lineDim">auth-flow | <span className="sc-lineYellow">Claude Code</span></div>
         <div style={{ height: 6 }} />
         <div><span className="sc-lineBlue">User:</span> Add JWT auth to the API</div>
         <div style={{ height: 4 }} />
@@ -188,48 +188,34 @@ function ConversationsPane() {
 function WorktreesPane() {
   return (
     <>
-      <p className="sc-sectionTitle">Worktrees</p>
+      <p className="sc-sectionTitle">Worktrees <span className="sc-lineDim">zero commands</span></p>
       <div className="sc-list">
         <div className="sc-item">
           <span className="sc-bullet sc-bulletGreen" />
-          tmux-guide
-        </div>
-        <div className="sc-item">
-          <span className="sc-bullet sc-bulletBlue" />
-          waiting-check
+          main
         </div>
         <div className="sc-item sc-itemActive">
+          <span className="sc-bullet sc-bulletBlue" />
+          feature/auth <span className="sc-lineDim">PR #47</span>
+        </div>
+        <div className="sc-item">
           <span className="sc-bullet sc-bulletPink" />
-          worktree-merge-plan
+          fix/memory <span className="sc-lineDim">PR #52</span>
         </div>
       </div>
       <div style={{ height: 12 }} />
       <div className="sc-codeBlock" role="img" aria-label="Sidecar output pane preview">
-        <div className="sc-lineDim">worktree-merge-plan | PR #47</div>
+        <div className="sc-lineDim">feature/auth | <span className="sc-lineGreen">Ready to merge</span></div>
         <div style={{ height: 6 }} />
-        <div>
-          <span className="sc-lineGreen">+ </span>
-          <span className="sc-lineDim">// Option: Keep worktree</span>
-        </div>
-        <div>
-          <span className="sc-lineGreen">+ </span>
-          <span className="sc-lineDim">{'if !mergeState.DeleteAfterMerge {'}</span>
-        </div>
-        <div>
-          <span className="sc-lineGreen">+ </span>
-          <span className="sc-lineDim">{'  Render("* Keep worktree")'}</span>
-        </div>
-        <div>
-          <span className="sc-linePink">- </span>
-          <span className="sc-lineDim">Press Enter to check now</span>
-        </div>
-        <div>
-          <span className="sc-lineGreen">+ </span>
-          <span className="sc-lineDim">{'Enter: check | Esc: exit | arrows: navigate'}</span>
-        </div>
+        <div><span className="sc-lineBlue">Task:</span> td-a1b2c3 <span className="sc-lineDim">from td</span></div>
+        <div><span className="sc-lineYellow">Prompts:</span> 3 configured</div>
         <div style={{ height: 6 }} />
-        <div className="sc-lineDim">* 3 commits ahead of main</div>
-        <div className="sc-lineDim">* Ready to merge</div>
+        <div className="sc-lineDim">Actions:</div>
+        <div>  <span className="sc-lineGreen">[n]</span> New worktree + agent</div>
+        <div>  <span className="sc-lineGreen">[s]</span> Send task from td</div>
+        <div>  <span className="sc-lineGreen">[p]</span> Run prompt sequence</div>
+        <div style={{ height: 6 }} />
+        <div className="sc-lineDim">* 3 commits ahead | checks passing</div>
       </div>
     </>
   );
@@ -505,28 +491,28 @@ function ConversationsMockup() {
     <div className="sc-mockup sc-mockupConvos">
       <div className="sc-mockupHeader">
         <span className="sc-mockupTitle">Conversations</span>
-        <span className="sc-lineDim">12 sessions | Claude Code</span>
+        <span className="sc-lineDim">18 sessions | all agents</span>
       </div>
       <div className="sc-mockupBody">
         <div className="sc-mockupSidebar">
           <div className="sc-mockupItem sc-mockupItemActive">
             <span className="sc-bullet sc-bulletGreen" />
             <div>
-              <div>auth-flow-impl</div>
+              <div>auth-flow <span className="sc-lineYellow" style={{ fontSize: 10 }}>Claude</span></div>
               <div className="sc-lineDim" style={{ fontSize: 11 }}>24m ago | 12.4k</div>
             </div>
           </div>
           <div className="sc-mockupItem">
             <span className="sc-bullet sc-bulletBlue" />
             <div>
-              <div>fix-rate-limit</div>
+              <div>rate-limit <span className="sc-linePink" style={{ fontSize: 10 }}>Cursor</span></div>
               <div className="sc-lineDim" style={{ fontSize: 11 }}>2h ago | 8.2k</div>
             </div>
           </div>
           <div className="sc-mockupItem">
             <span className="sc-bullet sc-bulletPink" />
             <div>
-              <div>refactor-plugins</div>
+              <div>refactor <span className="sc-lineBlue" style={{ fontSize: 10 }}>Gemini</span></div>
               <div className="sc-lineDim" style={{ fontSize: 11 }}>1d ago | 24.1k</div>
             </div>
           </div>
@@ -565,7 +551,7 @@ function WorktreesMockup() {
     <div className="sc-mockup sc-mockupWorktrees">
       <div className="sc-mockupHeader">
         <span className="sc-mockupTitle">Worktrees</span>
-        <span className="sc-lineDim">4 active | 2 with PRs</span>
+        <span className="sc-lineDim">zero commands | auto everything</span>
       </div>
       <div className="sc-mockupBody">
         <div className="sc-mockupSidebar">
@@ -587,14 +573,7 @@ function WorktreesMockup() {
             <span className="sc-bullet sc-bulletPink" />
             <div>
               <div>fix/memory</div>
-              <div className="sc-lineDim" style={{ fontSize: 11 }}>PR #52 | review</div>
-            </div>
-          </div>
-          <div className="sc-mockupItem">
-            <span className="sc-bullet sc-bulletYellow" />
-            <div>
-              <div>experiment</div>
-              <div className="sc-lineDim" style={{ fontSize: 11 }}>no PR</div>
+              <div className="sc-lineDim" style={{ fontSize: 11 }}>td-g7h8i9</div>
             </div>
           </div>
         </div>
@@ -603,25 +582,24 @@ function WorktreesMockup() {
             <div className="sc-lineBlue" style={{ fontSize: 14, marginBottom: 8 }}>feature/auth</div>
             <div style={{ display: 'grid', gap: 4, fontSize: 12 }}>
               <div><span className="sc-lineDim">PR:</span> <span className="sc-lineGreen">#47 Add JWT auth</span></div>
+              <div><span className="sc-lineDim">Task:</span> <span className="sc-lineYellow">td-a1b2c3</span> <span className="sc-lineDim">from td</span></div>
               <div><span className="sc-lineDim">Status:</span> <span className="sc-lineGreen">Ready to merge</span></div>
-              <div><span className="sc-lineDim">Checks:</span> <span className="sc-lineGreen">All passing</span></div>
-              <div><span className="sc-lineDim">Ahead:</span> 3 commits</div>
-              <div><span className="sc-lineDim">Behind:</span> 0 commits</div>
             </div>
             <div style={{ marginTop: 12, fontSize: 12 }}>
-              <div className="sc-lineDim" style={{ marginBottom: 4 }}>Recent commits</div>
-              <div>* Add JWT validation</div>
-              <div>* Create auth middleware</div>
-              <div>* Initial auth setup</div>
+              <div className="sc-lineDim" style={{ marginBottom: 4 }}>Quick actions</div>
+              <div><span className="sc-lineGreen">[n]</span> New worktree + start agent</div>
+              <div><span className="sc-lineGreen">[s]</span> Send task from td</div>
+              <div><span className="sc-lineGreen">[p]</span> Run prompt sequence</div>
+              <div><span className="sc-lineGreen">[m]</span> Merge & cleanup</div>
             </div>
           </div>
         </div>
       </div>
       <div className="sc-mockupFooter">
-        <span className="sc-lineYellow">enter</span><span className="sc-lineDim"> switch | </span>
         <span className="sc-lineYellow">n</span><span className="sc-lineDim"> new | </span>
-        <span className="sc-lineYellow">m</span><span className="sc-lineDim"> merge | </span>
-        <span className="sc-lineYellow">d</span><span className="sc-lineDim"> delete</span>
+        <span className="sc-lineYellow">s</span><span className="sc-lineDim"> send task | </span>
+        <span className="sc-lineYellow">p</span><span className="sc-lineDim"> prompts | </span>
+        <span className="sc-lineYellow">m</span><span className="sc-lineDim"> merge</span>
       </div>
     </div>
   );
@@ -650,16 +628,16 @@ function ComponentSection({ id, title, features, gradient, MockupComponent }) {
   );
 }
 
-function FeatureListItem({ icon, title, description }) {
+function FeatureListItem({ icon, title, description, color }) {
   return (
     <div className="sc-featureListItem">
-      <div className="sc-featureListIcon">
-        <i className={`icon-${icon}`} />
+      <div className="sc-featureListHeader">
+        <h4 className={`sc-featureListTitle ${color ? `sc-featureColor-${color}` : ''}`}>{title}</h4>
+        <div className="sc-featureListIcon">
+          <i className={`icon-${icon}`} />
+        </div>
       </div>
-      <div className="sc-featureListContent">
-        <h4 className="sc-featureListTitle">{title}</h4>
-        <p className="sc-featureListDesc">{description}</p>
-      </div>
+      <p className="sc-featureListDesc">{description}</p>
     </div>
   );
 }
@@ -696,11 +674,7 @@ export default function Home() {
                 and conversation history--designed for the "split the terminal and ship" workflow.
               </p>
 
-              <div className="sc-badges" aria-label="Highlights">
-                <span className="sc-badge">TUI-first</span>
-                <span className="sc-badge">Claude Code | Codex | Gemini | Opencode | Cursor</span>
-                <span className="sc-badge">Git + Tasks + Files + Convos</span>
-              </div>
+              <div style={{ height: 24 }} />
 
               <div className="sc-actions">
                 <Link className="sc-btn sc-btnPrimary" to="/docs/intro">
@@ -747,15 +721,15 @@ export default function Home() {
               {/* TD Hero Card - double wide */}
               <FeatureCard
                 id="td"
-                title="Track work across context windows"
+                title="Agent-first task management"
                 chip="td"
                 isHero={true}
                 isHighlighted={activeTab === 'td'}
                 onClick={() => handleCardClick('td')}
               >
-                The task management plugin designed for AI agents. Track persistent progress, status updates,
-                and "what happened while I was gone" across context windows. Create tasks, subtasks, and epics
-                that survive session resets.
+                Give agents structured work so they can operate autonomously for longer. Tasks persist across
+                context windows, keeping agents on track with clear objectives. Built-in review workflow
+                lets you verify work before moving to the next task.
               </FeatureCard>
 
               {/* Regular feature cards */}
@@ -781,22 +755,24 @@ export default function Home() {
 
               <FeatureCard
                 id="conversations"
-                title="Resume conversations, not vibes"
+                title="One timeline, all agents"
                 chip="conversations"
                 isHighlighted={activeTab === 'conversations'}
                 onClick={() => handleCardClick('conversations')}
               >
-                Browse sessions, search, and expand message content so you can pick up exactly where the agent left off.
+                Chronological view across Claude, Cursor, Gemini, and all adapters. See every session in one place,
+                search across agents, and pick up exactly where any agent left off.
               </FeatureCard>
 
               <FeatureCard
                 id="worktrees"
-                title="Manage parallel branches"
+                title="Zero-command worktree workflow"
                 chip="worktrees"
                 isHighlighted={activeTab === 'worktrees'}
                 onClick={() => handleCardClick('worktrees')}
               >
-                View and switch between git worktrees. Track PRs, merge status, and keep multiple features in flight.
+                Create worktrees, pass tasks from td, or kick off with configured prompts--all without typing git commands.
+                Everything is automatic: create, switch, merge, delete.
               </FeatureCard>
             </div>
           </div>
@@ -812,16 +788,16 @@ export default function Home() {
           <div className="sc-showcaseFullWidth">
             <ComponentSection
               id="showcase-td"
-              title="Task Management (td)"
+              title="Agent-First Task System (td)"
               gradient="sc-gradientGreen"
               MockupComponent={TdMockup}
               features={[
-                'Create and track tasks with unique IDs',
-                'Hierarchical subtasks and epics',
-                'Status workflow: pending, in_progress, blocked, done',
-                'Persistent storage survives context resets',
-                'Filter by status, search by content',
-                'Export tasks as markdown or JSON',
+                'Structured work keeps agents focused and autonomous',
+                'Tasks persist across context window resets',
+                'Built-in review workflow: verify before moving on',
+                'Hierarchical subtasks break down complex work',
+                'Status tracking: pending, in_progress, blocked, done',
+                'Epics group related tasks for larger features',
                 'Integrate with git commits and PRs',
               ]}
             />
@@ -860,33 +836,33 @@ export default function Home() {
 
             <ComponentSection
               id="showcase-conversations"
-              title="Conversation Viewer"
+              title="Unified Conversation Timeline"
               gradient="sc-gradientPink"
               MockupComponent={ConversationsMockup}
               features={[
-                'Browse all Claude Code sessions',
-                'Search across conversation history',
-                'Expand/collapse message content',
-                'View tool calls and results',
-                'Token usage statistics',
-                'Jump to specific conversation turns',
-                'Copy message content to clipboard',
+                'Chronological view across all coding agents',
+                'Claude, Cursor, Gemini, Codex, Opencode in one list',
+                'Search across all adapters at once',
+                'Filter by agent, date, or content',
+                'Expand messages and view tool calls',
+                'Token usage and session duration stats',
+                'Copy and export conversation content',
               ]}
             />
 
             <ComponentSection
               id="showcase-worktrees"
-              title="Worktree Manager"
+              title="Zero-Command Worktree Workflow"
               gradient="sc-gradientYellow"
               MockupComponent={WorktreesMockup}
               features={[
-                'List all git worktrees',
-                'View PR status and checks',
-                'Switch between worktrees',
-                'Create new worktrees from branches',
-                'Delete merged worktrees',
-                'See commits ahead/behind main',
-                'Merge workflow integration',
+                'No git commands needed--everything is automatic',
+                'Pass tasks directly from td to new worktrees',
+                'Configure prompt sequences to kick off agents',
+                'Create, switch, merge, delete with single keys',
+                'PR status and CI checks at a glance',
+                'Auto-cleanup after merge',
+                'Linked task tracking across worktrees',
               ]}
             />
           </div>
@@ -899,63 +875,75 @@ export default function Home() {
 
             <div className="sc-featuresGrid">
               <FeatureListItem
-                icon="terminal"
-                title="TUI-First Design"
-                description="Built for the terminal from the ground up. No electron, no browser--just fast, keyboard-driven interaction."
+                icon="feather"
+                title="Zero Config Setup"
+                color="green"
+                description="Just add a couple lines to your AGENTS.md file. No hooks, no agent modifications. Easy to add, easy to remove."
               />
               <FeatureListItem
                 icon="zap"
                 title="Instant Startup"
+                color="yellow"
                 description="Launches in milliseconds. No waiting for heavy runtimes or dependency resolution."
               />
               <FeatureListItem
-                icon="layout"
+                icon="columns-2"
                 title="Tab-Based Navigation"
+                color="blue"
                 description="Switch between plugins instantly with tab/shift-tab. Each plugin is a focused view of your project."
               />
               <FeatureListItem
-                icon="keyboard"
-                title="Vim-Style Keybindings"
-                description="j/k navigation, /search, and familiar modal interactions. Your muscle memory works here."
+                icon="mouse-pointer"
+                title="Full Mouse Support"
+                color="purple"
+                description="Click, scroll, and navigate with your mouse. Almost every element in the TUI responds to mouse interaction."
               />
               <FeatureListItem
                 icon="refresh-cw"
-                title="Live Updates"
-                description="File changes, git status, and task updates appear in real-time without manual refresh."
+                title="Auto-Update"
+                color="pink"
+                description="Sidecar checks for updates automatically and can update itself in place. Always stay on the latest version."
               />
               <FeatureListItem
                 icon="layers"
                 title="Multi-Agent Support"
+                color="orange"
                 description="Works with Claude Code, Codex, Gemini CLI, Opencode, and Cursor's cursor-agent."
               />
               <FeatureListItem
                 icon="git-branch"
                 title="Git Integration"
+                color="blue"
                 description="Deep integration with git: status, diff, staging, commits, branches, and worktrees."
               />
               <FeatureListItem
-                icon="database"
-                title="Persistent Storage"
-                description="Tasks and preferences persist across sessions. Pick up where you left off."
+                icon="palette"
+                title="Custom Themes"
+                color="green"
+                description="Ship with multiple themes or create your own. Customize colors to match your terminal aesthetic."
               />
               <FeatureListItem
                 icon="monitor"
                 title="tmux Integration"
+                color="yellow"
                 description="Designed to run in a tmux pane beside your agent. Attach and detach seamlessly."
               />
               <FeatureListItem
-                icon="settings"
-                title="Configurable"
-                description="Customize keybindings, colors, and behavior. Config files are plain YAML."
+                icon="keyboard"
+                title="Vim-Style Keybindings"
+                color="purple"
+                description="j/k navigation, /search, and familiar modal interactions. Your muscle memory works here."
               />
               <FeatureListItem
                 icon="code"
                 title="Open Source"
+                color="pink"
                 description="MIT licensed. Inspect the code, contribute features, or fork for your needs."
               />
               <FeatureListItem
                 icon="package"
                 title="Single Binary"
+                color="orange"
                 description="No dependencies to install. Download one binary and you're ready to go."
               />
             </div>

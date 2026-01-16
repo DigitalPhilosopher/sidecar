@@ -807,8 +807,9 @@ a:hover {
 
 .sc-featureListItem {
   display: flex;
-  gap: 12px;
-  padding: 14px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--sc-border);
   background: rgba(23, 26, 31, 0.4);
@@ -819,36 +820,47 @@ a:hover {
   border-color: rgba(255,255,255,0.12);
 }
 
+.sc-featureListHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .sc-featureListIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(102, 217, 239, 0.1);
-  border: 1px solid rgba(102, 217, 239, 0.2);
-  color: var(--sc-blue);
-  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sc-border);
+  color: rgba(232, 232, 227, 0.5);
+  font-size: 14px;
   flex-shrink: 0;
 }
 
-.sc-featureListContent {
-  flex: 1;
-  min-width: 0;
+.sc-featureListTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.3;
 }
 
-.sc-featureListTitle {
-  font-size: 13px;
-  margin: 0 0 4px;
-  color: var(--ifm-font-color-base);
-}
+/* Feature title color variants */
+.sc-featureColor-green { color: var(--ifm-color-primary); }
+.sc-featureColor-blue { color: var(--sc-blue); }
+.sc-featureColor-pink { color: var(--sc-pink); }
+.sc-featureColor-purple { color: var(--sc-purple); }
+.sc-featureColor-yellow { color: var(--sc-yellow); }
+.sc-featureColor-orange { color: var(--sc-orange); }
 
 .sc-featureListDesc {
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
   color: rgba(232,232,227,0.65);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 /* ---------- Agents section ---------- */
