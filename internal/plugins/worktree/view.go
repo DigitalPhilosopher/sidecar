@@ -629,19 +629,27 @@ func (p *Plugin) renderCommitStatusHeader(width int) string {
 
 // renderDiffContent renders git diff using the shared diff renderer.
 func (p *Plugin) renderDiffContent(width, height int) string {
-	if p.diffRaw == "" {
-		wt := p.selectedWorktree()
-		if wt == nil {
-			return dimText("No worktree selected")
-		}
-		return dimText("No changes")
+	wt := p.selectedWorktree()
+	if wt == nil {
+		return dimText("No worktree selected")
 	}
 
-	// Render commit status header
-	header := p.renderCommitStatusHeader(width)
+	// Render commit status header if it belongs to current worktree
+	header := ""
+	if p.commitStatusWorktree == wt.Name {
+		header = p.renderCommitStatusHeader(width)
+	}
+
 	headerHeight := 0
 	if header != "" {
 		headerHeight = lipgloss.Height(header) + 1 // +1 for blank line
+	}
+
+	if p.diffRaw == "" {
+		if header != "" {
+			return header + "\n" + dimText("No uncommitted changes")
+		}
+		return dimText("No changes")
 	}
 
 	// Adjust available height for diff content
