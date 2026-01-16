@@ -173,6 +173,11 @@ func TestSanitizeBranchName(t *testing.T) {
 		{name: "trailing-slash", input: "foo/", want: "foo"},
 		{name: "collapse-dashes", input: "foo--bar", want: "foo-bar"},
 		{name: "complex", input: "hello world..foo/.bar//baz.lock", want: "hello-world.foo/bar/baz"},
+		// Regression tests: .lock suffix exposed after trailing character cleanup
+		{name: "lock-with-trailing-dash", input: "foo.lock-", want: "foo"},
+		{name: "lock-with-trailing-dashes", input: "bar.lock--", want: "bar"},
+		{name: "lock-with-trailing-slash", input: "branch.lock/", want: "branch"},
+		{name: "lock-trailing-dash-multiple", input: "test.lock.lock-", want: "test"},
 	}
 
 	for _, tt := range tests {

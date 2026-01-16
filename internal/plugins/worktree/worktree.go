@@ -641,5 +641,11 @@ func SanitizeBranchName(name string) string {
 	// Final trim of leading/trailing dashes
 	name = strings.Trim(name, "-")
 
+	// Final check: remove .lock suffix if exposed by previous cleanup steps
+	// (e.g., "foo.lock-" -> "foo.lock" after dash trim)
+	for strings.HasSuffix(name, ".lock") {
+		name = strings.TrimSuffix(name, ".lock")
+	}
+
 	return name
 }
