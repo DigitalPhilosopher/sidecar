@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.21.0] - 2026-01-17
+
+### Bug Fixes
+- Fixed pullAfterMerge corrupting working tree when on base branch (uses pull --ff-only instead of update-ref)
+
 ## [v0.20.0] - 2026-01-17
 
 ### Features
