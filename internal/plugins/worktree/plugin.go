@@ -3,6 +3,7 @@ package worktree
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -421,34 +422,83 @@ func (p *Plugin) clearCreateModal() {
 	p.promptPicker = nil
 }
 
-// openCreateModal opens the create worktree modal and initializes all inputs.
-func (p *Plugin) openCreateModal() tea.Cmd {
+// initCreateModalBase initializes common create modal state.
+func (p *Plugin) initCreateModalBase() {
 	p.viewMode = ViewModeCreate
-	// Initialize textinputs for create modal
+
+	// Initialize text inputs
 	p.createNameInput = textinput.New()
 	p.createNameInput.Placeholder = "feature-name"
 	p.createNameInput.Focus()
 	p.createNameInput.CharLimit = 100
+
 	p.createBaseBranchInput = textinput.New()
 	p.createBaseBranchInput.Placeholder = "main"
 	p.createBaseBranchInput.CharLimit = 100
+
 	p.taskSearchInput = textinput.New()
 	p.taskSearchInput.Placeholder = "Search tasks..."
 	p.taskSearchInput.CharLimit = 100
-	p.createAgentType = AgentClaude // Default to Claude
+
+	// Reset all state
+	p.createTaskID = ""
+	p.createTaskTitle = ""
+	p.createAgentType = AgentClaude
 	p.createSkipPermissions = false
 	p.createFocus = 0
+	p.createError = ""
+	p.taskSearchAll = nil
+	p.taskSearchFiltered = nil
+	p.taskSearchIdx = 0
 	p.taskSearchLoading = true
+
 	// Load prompts from global and project config
 	home, _ := os.UserHomeDir()
 	configDir := filepath.Join(home, ".config", "sidecar")
 	p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
-	p.createPromptIdx = -1 // No prompt selected by default
+	p.createPromptIdx = -1
 	p.promptPicker = nil
 	p.branchAll = nil
 	p.branchFiltered = nil
 	p.branchIdx = 0
+}
+
+// openCreateModal opens the create worktree modal and initializes all inputs.
+func (p *Plugin) openCreateModal() tea.Cmd {
+	p.initCreateModalBase()
 	return tea.Batch(p.loadOpenTasks(), p.loadBranches())
+}
+
+// openCreateModalWithTask opens the create modal pre-filled with task data.
+// Called from td-monitor plugin when user presses send-to-worktree hotkey.
+func (p *Plugin) openCreateModalWithTask(taskID, taskTitle string) tea.Cmd {
+	p.initCreateModalBase()
+
+	// Pre-fill name from task
+	suggestedName := p.deriveBranchName(taskID, taskTitle)
+	p.createNameInput.SetValue(suggestedName)
+	p.branchNameValid, p.branchNameErrors, p.branchNameSanitized = ValidateBranchName(suggestedName)
+
+	// Pre-fill task link
+	p.createTaskID = taskID
+	p.createTaskTitle = taskTitle
+
+	return tea.Batch(p.loadOpenTasks(), p.loadBranches())
+}
+
+// deriveBranchName creates a git-safe branch name from task ID and title.
+// Format: "<task-id>-<sanitized-title>" e.g., "td-abc123-add-user-auth"
+func (p *Plugin) deriveBranchName(taskID, title string) string {
+	sanitized := SanitizeBranchName(title)
+	// Truncate by runes (not bytes) to avoid corrupting multi-byte Unicode
+	runes := []rune(sanitized)
+	if len(runes) > 40 {
+		sanitized = strings.TrimSuffix(string(runes[:40]), "-")
+	}
+	if sanitized == "" {
+		return taskID
+	}
+	return taskID + "-" + sanitized
 }
 
 // getSelectedPrompt returns the currently selected prompt, or nil if none.
