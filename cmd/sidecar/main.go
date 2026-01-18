@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -45,6 +47,20 @@ var (
 
 func main() {
 	flag.Parse()
+
+	// Start pprof server if enabled (for memory profiling)
+	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {
+		if pprofPort == "1" {
+			pprofPort = "6060" // default port
+		}
+		go func() {
+			addr := "localhost:" + pprofPort
+			fmt.Fprintf(os.Stderr, "pprof enabled on http://%s/debug/pprof/\n", addr)
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "pprof server error: %v\n", err)
+			}
+		}()
+	}
 
 	// Handle version flag
 	if *versionFlag || *shortVersion {
