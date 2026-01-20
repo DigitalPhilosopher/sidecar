@@ -142,16 +142,16 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		}
 	case ViewModeTypeSelector:
 		if action.Region == nil {
-			p.typeSelectorHover = 0
+			p.typeSelectorHover = -1 // No hover
 			return nil
 		}
 		switch action.Region.ID {
 		case regionTypeSelectorOption:
 			if idx, ok := action.Region.Data.(int); ok {
-				p.typeSelectorHover = idx + 1 // 1=Shell, 2=Worktree
+				p.typeSelectorHover = idx // 0=Shell, 1=Worktree (consistent with typeSelectorIdx)
 			}
 		default:
-			p.typeSelectorHover = 0
+			p.typeSelectorHover = -1
 		}
 	default:
 		p.createButtonHover = 0
@@ -557,24 +557,28 @@ func (p *Plugin) scrollPreviewHorizontal(delta int) tea.Cmd {
 	return nil
 }
 
-// scrollSidebar scrolls the sidebar worktree list.
+// scrollSidebar scrolls the sidebar list (shells + worktrees).
 func (p *Plugin) scrollSidebar(delta int) tea.Cmd {
-	if len(p.worktrees) == 0 {
+	// Check if there's anything to scroll through
+	if len(p.shells) == 0 && len(p.worktrees) == 0 {
 		return nil
 	}
 
-	newCursor := p.selectedIdx + delta
-	if newCursor < 0 {
-		newCursor = 0
-	}
-	if newCursor >= len(p.worktrees) {
-		newCursor = len(p.worktrees) - 1
-	}
+	// Track old selection to detect change
+	oldShellSelected := p.shellSelected
+	oldShellIdx := p.selectedShellIdx
+	oldWorktreeIdx := p.selectedIdx
 
-	if newCursor != p.selectedIdx {
-		p.selectedIdx = newCursor
-		p.ensureVisible()
-		return p.loadSelectedDiff()
+	// Delegate to moveCursor which handles multi-shell navigation properly
+	p.moveCursor(delta)
+
+	// Check if selection actually changed
+	selectionChanged := p.shellSelected != oldShellSelected ||
+		(p.shellSelected && p.selectedShellIdx != oldShellIdx) ||
+		(!p.shellSelected && p.selectedIdx != oldWorktreeIdx)
+
+	if selectionChanged {
+		return p.loadSelectedContent()
 	}
 	return nil
 }

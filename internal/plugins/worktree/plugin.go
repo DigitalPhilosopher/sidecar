@@ -656,12 +656,21 @@ func (p *Plugin) moveCursor(delta int) {
 }
 
 // ensureVisible adjusts scroll to keep selected item visible.
+// Accounts for shells (which appear before worktrees in the sidebar).
 func (p *Plugin) ensureVisible() {
-	if p.selectedIdx < p.scrollOffset {
-		p.scrollOffset = p.selectedIdx
+	// Calculate effective position in the combined list (shells + worktrees)
+	var effectivePos int
+	if p.shellSelected {
+		effectivePos = p.selectedShellIdx
+	} else {
+		effectivePos = len(p.shells) + p.selectedIdx
 	}
-	if p.visibleCount > 0 && p.selectedIdx >= p.scrollOffset+p.visibleCount {
-		p.scrollOffset = p.selectedIdx - p.visibleCount + 1
+
+	if effectivePos < p.scrollOffset {
+		p.scrollOffset = effectivePos
+	}
+	if p.visibleCount > 0 && effectivePos >= p.scrollOffset+p.visibleCount {
+		p.scrollOffset = effectivePos - p.visibleCount + 1
 	}
 	// Guard against negative scroll offset (can happen with empty worktree list)
 	if p.scrollOffset < 0 {

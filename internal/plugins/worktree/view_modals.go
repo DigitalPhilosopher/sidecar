@@ -1629,7 +1629,7 @@ func (p *Plugin) renderTypeSelectorModal(width, height int) string {
 		if i == p.typeSelectorIdx {
 			prefix = "> "
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true) // highlight
-		} else if i+1 == p.typeSelectorHover {
+		} else if i == p.typeSelectorHover {
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("252")) // hover
 		}
 

@@ -43,12 +43,15 @@ func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.typeSelectorIdx < 1 {
 			p.typeSelectorIdx++
 		}
+		p.typeSelectorHover = -1 // Clear hover on keyboard nav
 	case "k", "up":
 		if p.typeSelectorIdx > 0 {
 			p.typeSelectorIdx--
 		}
+		p.typeSelectorHover = -1 // Clear hover on keyboard nav
 	case "enter":
 		p.viewMode = ViewModeList
+		p.typeSelectorHover = -1
 		if p.typeSelectorIdx == 0 {
 			// Create new shell
 			return p.createNewShell()
@@ -57,7 +60,8 @@ func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
 		return p.openCreateModal()
 	case "esc", "q":
 		p.viewMode = ViewModeList
-		p.typeSelectorIdx = 1 // Reset to default (Worktree)
+		p.typeSelectorIdx = 1    // Reset to default (Worktree)
+		p.typeSelectorHover = -1 // Clear hover state
 	}
 	return nil
 }
@@ -387,7 +391,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Open type selector modal to choose between Shell and Worktree
 		p.viewMode = ViewModeTypeSelector
 		p.typeSelectorIdx = 1 // Default to Worktree (more common)
-		p.typeSelectorHover = 0
+		p.typeSelectorHover = -1 // No hover initially (0-based: -1 = none)
 		return nil
 	case "D":
 		// Check if deleting a shell session
