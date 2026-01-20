@@ -24,6 +24,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleAgentChoiceKeys(msg)
 	case ViewModeConfirmDelete:
 		return p.handleConfirmDeleteKeys(msg)
+	case ViewModeConfirmDeleteShell:
+		return p.handleConfirmDeleteShellKeys(msg)
 	case ViewModeCommitForMerge:
 		return p.handleCommitForMergeKeys(msg)
 	case ViewModePromptPicker:
@@ -263,6 +265,57 @@ func (p *Plugin) cancelDelete() tea.Cmd {
 	return nil
 }
 
+// handleConfirmDeleteShellKeys handles keys in the shell delete confirmation modal.
+func (p *Plugin) handleConfirmDeleteShellKeys(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "tab", "j", "down", "l", "right":
+		// Toggle between Delete (0) and Cancel (1)
+		p.deleteShellConfirmFocus = (p.deleteShellConfirmFocus + 1) % 2
+	case "shift+tab", "k", "up", "h", "left":
+		// Toggle between Delete (0) and Cancel (1)
+		p.deleteShellConfirmFocus = (p.deleteShellConfirmFocus + 1) % 2
+	case "enter":
+		if p.deleteShellConfirmFocus == 1 {
+			return p.cancelShellDelete()
+		}
+		return p.executeShellDelete()
+	case "D":
+		// Power user shortcut - immediate confirm
+		return p.executeShellDelete()
+	case "esc", "q":
+		return p.cancelShellDelete()
+	}
+	return nil
+}
+
+// executeShellDelete performs the shell deletion.
+func (p *Plugin) executeShellDelete() tea.Cmd {
+	shell := p.deleteConfirmShell
+	if shell == nil {
+		p.viewMode = ViewModeList
+		return nil
+	}
+
+	sessionName := shell.TmuxName
+
+	// Clear modal state
+	p.viewMode = ViewModeList
+	p.deleteConfirmShell = nil
+	p.deleteShellConfirmFocus = 0
+	p.deleteShellConfirmButtonHover = 0
+
+	return p.killShellSessionByName(sessionName)
+}
+
+// cancelShellDelete closes the shell delete confirmation modal without deleting.
+func (p *Plugin) cancelShellDelete() tea.Cmd {
+	p.viewMode = ViewModeList
+	p.deleteConfirmShell = nil
+	p.deleteShellConfirmFocus = 0
+	p.deleteShellConfirmButtonHover = 0
+	return nil
+}
+
 // handleListKeys handles keys in list view (and kanban view).
 func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	// Clear any deletion warnings on key interaction
@@ -301,9 +354,14 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.previewOffset++
 	case "g":
 		if p.activePane == PaneSidebar {
-			// Jump to top = select shell entry
-			p.shellSelected = true
-			p.selectedIdx = 0
+			// Jump to top = select first shell if any, otherwise first worktree
+			if len(p.shells) > 0 {
+				p.shellSelected = true
+				p.selectedShellIdx = 0
+			} else if len(p.worktrees) > 0 {
+				p.shellSelected = false
+				p.selectedIdx = 0
+			}
 			p.scrollOffset = 0
 			return p.loadSelectedContent()
 		}
@@ -332,6 +390,15 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.typeSelectorHover = 0
 		return nil
 	case "D":
+		// Check if deleting a shell session
+		if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+			p.viewMode = ViewModeConfirmDeleteShell
+			p.deleteConfirmShell = p.shells[p.selectedShellIdx]
+			p.deleteShellConfirmFocus = 0       // Focus delete button
+			p.deleteShellConfirmButtonHover = 0 // Clear hover
+			return nil
+		}
+		// Otherwise delete worktree
 		wt := p.selectedWorktree()
 		if wt == nil {
 			return nil

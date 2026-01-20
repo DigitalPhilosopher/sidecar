@@ -55,6 +55,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderAgentChoiceModal(width, height)
 	case ViewModeConfirmDelete:
 		return p.renderConfirmDeleteModal(width, height)
+	case ViewModeConfirmDeleteShell:
+		return p.renderConfirmDeleteShellModal(width, height)
 	case ViewModeCommitForMerge:
 		return p.renderCommitForMergeModal(width, height)
 	case ViewModePromptPicker:

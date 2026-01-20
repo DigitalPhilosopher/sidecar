@@ -76,6 +76,19 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		default:
 			p.deleteConfirmButtonHover = 0
 		}
+	case ViewModeConfirmDeleteShell:
+		if action.Region == nil {
+			p.deleteShellConfirmButtonHover = 0
+			return nil
+		}
+		switch action.Region.ID {
+		case regionDeleteShellConfirmDelete:
+			p.deleteShellConfirmButtonHover = 1
+		case regionDeleteShellConfirmCancel:
+			p.deleteShellConfirmButtonHover = 2
+		default:
+			p.deleteShellConfirmButtonHover = 0
+		}
 	case ViewModePromptPicker:
 		if p.promptPicker == nil {
 			return nil
@@ -177,16 +190,20 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	case regionWorktreeItem:
 		// Click on worktree or shell entry - select it
 		if idx, ok := action.Region.Data.(int); ok {
-			if idx == -1 {
-				// Shell entry clicked
-				if !p.shellSelected {
-					p.shellSelected = true
-					p.previewOffset = 0
-					p.previewHorizOffset = 0
-					p.autoScrollOutput = true
+			if idx < 0 {
+				// Shell entry clicked (negative index: -1 -> shells[0], -2 -> shells[1], etc.)
+				shellIdx := -(idx + 1)
+				if shellIdx >= 0 && shellIdx < len(p.shells) {
+					if !p.shellSelected || p.selectedShellIdx != shellIdx {
+						p.shellSelected = true
+						p.selectedShellIdx = shellIdx
+						p.previewOffset = 0
+						p.previewHorizOffset = 0
+						p.autoScrollOutput = true
+					}
+					p.activePane = PaneSidebar
+					return p.loadSelectedContent()
 				}
-				p.activePane = PaneSidebar
-				return p.loadSelectedContent()
 			} else if idx >= 0 && idx < len(p.worktrees) {
 				// Worktree clicked
 				if p.shellSelected || p.selectedIdx != idx {
@@ -247,6 +264,12 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	case regionDeleteConfirmCancel:
 		// Click cancel button
 		return p.cancelDelete()
+	case regionDeleteShellConfirmDelete:
+		// Click delete button in shell delete modal
+		return p.executeShellDelete()
+	case regionDeleteShellConfirmCancel:
+		// Click cancel button in shell delete modal
+		return p.cancelShellDelete()
 	case regionKanbanCard:
 		// Click on kanban card - select it
 		if data, ok := action.Region.Data.(kanbanCardData); ok {

@@ -830,6 +830,84 @@ func (p *Plugin) renderConfirmDeleteModal(width, height int) string {
 	return ui.OverlayModal(background, modal, width, height)
 }
 
+// renderConfirmDeleteShellModal renders the shell delete confirmation modal.
+func (p *Plugin) renderConfirmDeleteShellModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
+	if p.deleteConfirmShell == nil {
+		return background
+	}
+
+	// Modal dimensions
+	modalW := 50
+	if modalW > width-4 {
+		modalW = width - 4
+	}
+
+	shell := p.deleteConfirmShell
+
+	var sb strings.Builder
+	title := "Delete Shell?"
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render(title))
+	sb.WriteString("\n\n")
+
+	// Shell info
+	sb.WriteString(fmt.Sprintf("Name:    %s\n", lipgloss.NewStyle().Bold(true).Render(shell.Name)))
+	sb.WriteString(fmt.Sprintf("Session: %s\n", dimText(shell.TmuxName)))
+	sb.WriteString("\n")
+
+	// Warning text
+	warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	sb.WriteString(warningStyle.Render("This will:"))
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  • Terminate the tmux session"))
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  • Any running processes will be killed"))
+	sb.WriteString("\n\n")
+
+	// Render buttons with focus/hover states
+	deleteStyle := styles.ButtonDanger
+	cancelStyle := styles.Button
+	if p.deleteShellConfirmFocus == 0 {
+		deleteStyle = styles.ButtonDangerFocused
+	} else if p.deleteShellConfirmButtonHover == 1 {
+		deleteStyle = styles.ButtonDangerHover
+	}
+	if p.deleteShellConfirmFocus == 1 {
+		cancelStyle = styles.ButtonFocused
+	} else if p.deleteShellConfirmButtonHover == 2 {
+		cancelStyle = styles.ButtonHover
+	}
+	sb.WriteString(deleteStyle.Render(" Delete "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
+
+	content := sb.String()
+	modal := modalStyle.Width(modalW).Render(content)
+
+	// Calculate modal position for hit regions
+	modalHeight := lipgloss.Height(modal)
+	modalStartX := (width - modalW) / 2
+	modalStartY := (height - modalHeight) / 2
+
+	// Hit regions for buttons
+	// Content structure:
+	// - Title (1) + blank (1) = 2
+	// - Name line (1)
+	// - Session line (1)
+	// - blank (1)
+	// - "This will:" (1) + bullet 1 (1) + bullet 2 (1) + blank (1) = 4
+	// Total lines before buttons: 2 + 1 + 1 + 1 + 4 = 9
+	hitX := modalStartX + 3 // border(1) + padding(2)
+	buttonY := modalStartY + 2 + 9
+	p.mouseHandler.HitMap.AddRect(regionDeleteShellConfirmDelete, hitX, buttonY, 12, 1, nil)
+	cancelX := hitX + 12 + 2
+	p.mouseHandler.HitMap.AddRect(regionDeleteShellConfirmCancel, cancelX, buttonY, 12, 1, nil)
+
+	return ui.OverlayModal(background, modal, width, height)
+}
+
 // renderPromptPickerModal renders the prompt picker modal.
 func (p *Plugin) renderPromptPickerModal(width, height int) string {
 	// Render the background (create modal behind it)

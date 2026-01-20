@@ -18,6 +18,7 @@ const (
 	ViewModeMerge                          // Merge workflow modal
 	ViewModeAgentChoice                    // Agent action choice modal (attach/restart)
 	ViewModeConfirmDelete                  // Delete confirmation modal
+	ViewModeConfirmDeleteShell             // Shell delete confirmation modal
 	ViewModeCommitForMerge                 // Commit modal before merge workflow
 	ViewModePromptPicker                   // Prompt template picker modal
 	ViewModeTypeSelector                   // Type selector modal (shell vs worktree)

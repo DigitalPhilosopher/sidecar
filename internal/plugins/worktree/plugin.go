@@ -75,6 +75,10 @@ const (
 
 	// Type selector modal regions
 	regionTypeSelectorOption = "type-selector-option"
+
+	// Shell delete confirmation modal regions
+	regionDeleteShellConfirmDelete = "delete-shell-confirm-delete"
+	regionDeleteShellConfirmCancel = "delete-shell-confirm-cancel"
 )
 
 // Plugin implements the worktree manager plugin.
@@ -206,6 +210,11 @@ type Plugin struct {
 	deleteHasRemote          bool      // Whether remote branch exists
 	deleteConfirmFocus       int       // 0=local checkbox, 1=remote checkbox (if exists), then delete/cancel btns
 	deleteWarnings           []string  // Warnings from last delete operation (e.g., branch deletion failures)
+
+	// Shell delete confirmation modal state
+	deleteConfirmShell            *ShellSession // Shell pending deletion
+	deleteShellConfirmFocus       int           // 0=delete button, 1=cancel button
+	deleteShellConfirmButtonHover int           // 0=none, 1=delete, 2=cancel (for mouse hover)
 
 	// Initial reconnection tracking
 	initialReconnectDone bool
@@ -579,41 +588,66 @@ func (p *Plugin) toggleSidebar() {
 }
 
 // moveCursor moves the selection cursor.
-// Shell entry is conceptually at index -1 (before all worktrees).
+// Navigation order: shells[0], shells[1], ..., worktrees[0], worktrees[1], ...
 func (p *Plugin) moveCursor(delta int) {
 	oldShellSelected := p.shellSelected
-	oldIdx := p.selectedIdx
+	oldShellIdx := p.selectedShellIdx
+	oldWorktreeIdx := p.selectedIdx
+
+	shellCount := len(p.shells)
+	worktreeCount := len(p.worktrees)
 
 	if p.shellSelected {
-		// Currently on shell entry
-		if delta > 0 && len(p.worktrees) > 0 {
-			// Moving down from shell to first worktree
-			p.shellSelected = false
-			p.selectedIdx = 0
+		// Currently on a shell entry
+		newShellIdx := p.selectedShellIdx + delta
+		if newShellIdx < 0 {
+			// Already at first shell, stay there
+			newShellIdx = 0
+		} else if newShellIdx >= shellCount {
+			// Moving past last shell -> go to first worktree (if any)
+			if worktreeCount > 0 {
+				p.shellSelected = false
+				p.selectedIdx = 0
+			} else {
+				// No worktrees, stay on last shell
+				newShellIdx = shellCount - 1
+			}
 		}
-		// Moving up from shell stays on shell (already at top)
-	} else if len(p.worktrees) == 0 {
-		// No worktrees exist, any navigation selects the shell
-		p.shellSelected = true
+		if p.shellSelected {
+			p.selectedShellIdx = newShellIdx
+		}
+	} else if worktreeCount == 0 {
+		// No worktrees exist, select shell if any
+		if shellCount > 0 {
+			p.shellSelected = true
+			p.selectedShellIdx = 0
+		}
 	} else {
 		// Currently on a worktree
-		if delta < 0 && p.selectedIdx == 0 {
-			// Moving up from first worktree to shell
-			p.shellSelected = true
-		} else {
-			// Normal worktree navigation
-			p.selectedIdx += delta
-			if p.selectedIdx < 0 {
+		newIdx := p.selectedIdx + delta
+		if newIdx < 0 {
+			// Moving up from first worktree -> go to last shell (if any)
+			if shellCount > 0 {
+				p.shellSelected = true
+				p.selectedShellIdx = shellCount - 1
+			} else {
+				// No shells, stay on first worktree
 				p.selectedIdx = 0
 			}
-			if p.selectedIdx >= len(p.worktrees) {
-				p.selectedIdx = len(p.worktrees) - 1
-			}
+		} else if newIdx >= worktreeCount {
+			// Already at last worktree, stay there
+			p.selectedIdx = worktreeCount - 1
+		} else {
+			// Normal worktree navigation
+			p.selectedIdx = newIdx
 		}
 	}
 
 	// Reset preview scroll state when changing selection
-	if p.shellSelected != oldShellSelected || p.selectedIdx != oldIdx {
+	selectionChanged := p.shellSelected != oldShellSelected ||
+		(p.shellSelected && p.selectedShellIdx != oldShellIdx) ||
+		(!p.shellSelected && p.selectedIdx != oldWorktreeIdx)
+	if selectionChanged {
 		p.previewOffset = 0
 		p.previewHorizOffset = 0
 		p.autoScrollOutput = true

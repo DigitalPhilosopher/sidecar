@@ -325,8 +325,15 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Shell session killed, remove from list
 		for i, shell := range p.shells {
 			if shell.TmuxName == msg.SessionName {
+				// Clean up Agent resources
+				if shell.Agent != nil {
+					shell.Agent.OutputBuf = nil
+					shell.Agent = nil
+				}
 				p.shells = append(p.shells[:i], p.shells[i+1:]...)
 				delete(p.managedSessions, msg.SessionName)
+				// Clean up pane cache
+				globalPaneCache.remove(msg.SessionName)
 				break
 			}
 		}
@@ -340,7 +347,41 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 					p.selectedIdx = 0
 				}
 			}
+			// Reload content for the newly selected item
+			cmds = append(cmds, p.loadSelectedContent())
 		}
+
+	case ShellSessionDeadMsg:
+		// Shell session externally terminated (user typed 'exit' in shell)
+		// Remove the dead shell from the list
+		for i, shell := range p.shells {
+			if shell.TmuxName == msg.TmuxName {
+				// Clean up Agent resources
+				if shell.Agent != nil {
+					shell.Agent.OutputBuf = nil
+					shell.Agent = nil
+				}
+				p.shells = append(p.shells[:i], p.shells[i+1:]...)
+				delete(p.managedSessions, msg.TmuxName)
+				// Clean up pane cache
+				globalPaneCache.remove(msg.TmuxName)
+				break
+			}
+		}
+		// Adjust selection if needed
+		if p.shellSelected {
+			if p.selectedShellIdx >= len(p.shells) {
+				if len(p.shells) > 0 {
+					p.selectedShellIdx = len(p.shells) - 1
+				} else if len(p.worktrees) > 0 {
+					p.shellSelected = false
+					p.selectedIdx = 0
+				}
+			}
+			// Reload content for the newly selected item
+			return p, p.loadSelectedContent()
+		}
+		return p, nil
 
 	case ShellOutputMsg:
 		// Update last output time if content changed

@@ -42,6 +42,11 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "cancel", Name: "Cancel", Description: "Cancel deletion", Context: "worktree-confirm-delete", Priority: 1},
 			{ID: "delete", Name: "Delete", Description: "Confirm deletion", Context: "worktree-confirm-delete", Priority: 2},
 		}
+	case ViewModeConfirmDeleteShell:
+		return []plugin.Command{
+			{ID: "cancel", Name: "Cancel", Description: "Cancel deletion", Context: "worktree-confirm-delete-shell", Priority: 1},
+			{ID: "delete", Name: "Delete", Description: "Terminate shell", Context: "worktree-confirm-delete-shell", Priority: 2},
+		}
 	case ViewModeCommitForMerge:
 		return []plugin.Command{
 			{ID: "cancel", Name: "Cancel", Description: "Cancel merge", Context: "worktree-commit-for-merge", Priority: 1},
@@ -183,6 +188,8 @@ func (p *Plugin) FocusContext() string {
 		return "worktree-agent-choice"
 	case ViewModeConfirmDelete:
 		return "worktree-confirm-delete"
+	case ViewModeConfirmDeleteShell:
+		return "worktree-confirm-delete-shell"
 	case ViewModeCommitForMerge:
 		return "worktree-commit-for-merge"
 	case ViewModePromptPicker:

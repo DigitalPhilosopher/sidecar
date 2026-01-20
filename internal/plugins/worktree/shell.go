@@ -67,6 +67,13 @@ type (
 		SessionName string // tmux session name that was killed
 	}
 
+	// ShellSessionDeadMsg signals shell session was externally terminated
+	// (e.g., user typed 'exit' in the shell)
+	ShellSessionDeadMsg struct {
+		Index    int    // Index of the dead shell in p.shells
+		TmuxName string // Session name for cleanup
+	}
+
 	// ShellOutputMsg signals shell output was captured (for polling)
 	ShellOutputMsg struct {
 		Index   int    // Index of the shell in p.shells
@@ -182,7 +189,15 @@ func (p *Plugin) generateShellSessionName() string {
 // createNewShell creates a new shell session and returns a command.
 func (p *Plugin) createNewShell() tea.Cmd {
 	sessionName := p.generateShellSessionName()
-	displayName := fmt.Sprintf("Shell %d", len(p.shells)+1)
+	// Extract index from session name (e.g., "sidecar-sh-project-3" -> 3)
+	// This ensures correct numbering after kills (e.g., Shell 1, Shell 3)
+	indexPattern := regexp.MustCompile(`-(\d+)$`)
+	matches := indexPattern.FindStringSubmatch(sessionName)
+	displayIdx := len(p.shells) + 1 // fallback
+	if matches != nil {
+		displayIdx, _ = strconv.Atoi(matches[1])
+	}
+	displayName := fmt.Sprintf("Shell %d", displayIdx)
 	workDir := p.ctx.WorkDir
 
 	return func() tea.Msg {
@@ -327,6 +342,10 @@ func (p *Plugin) pollShellSessionByIndex(idx int) tea.Cmd {
 	return func() tea.Msg {
 		output, err := capturePaneDirect(sessionName)
 		if err != nil {
+			// Check if session is dead (not just a capture error)
+			if !sessionExists(sessionName) {
+				return ShellSessionDeadMsg{Index: idx, TmuxName: sessionName}
+			}
 			return ShellOutputMsg{Index: idx, Output: "", Changed: false}
 		}
 
