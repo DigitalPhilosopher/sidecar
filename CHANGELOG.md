@@ -2,6 +2,20 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.33.0] - 2026-01-20
+
+### Features
+- **Worktree**: Multiple shells per worktree - open and manage multiple terminal sessions
+- **Worktree**: [+] buttons in Shells and Worktrees sub-headers for quick creation
+- **Worktree**: Persist and restore worktree/shell selection across sessions
+- **Project Switcher**: g/G navigation to jump to first/last project
+- **File Browser**: Auto-refresh tree on plugin focus
+
+### Bug Fixes
+- **Worktree**: Fix orphaned tmux sessions on worktree delete/merge
+- **Worktree**: Fix shell selection shift when earlier shell removed
+- **Worktree**: Fix shell selection bugs and use name-based polling
+
 ## [v0.32.0] - 2026-01-20
 
 ### Features
