@@ -18,7 +18,14 @@ func (p *Plugin) renderPreviewContent(width, height int) string {
 		return p.truncateAllLines(p.renderWelcomeGuide(width, height), width)
 	}
 
-	// Tab header
+	// When shell is selected, show shell content directly without tabs
+	// (Output/Diff/Task tabs are not relevant for the project shell)
+	if p.shellSelected {
+		content := p.renderShellOutput(width, height)
+		return p.truncateAllLines(content, width)
+	}
+
+	// Tab header (only for worktrees, not shell)
 	tabs := p.renderTabs(width)
 	lines = append(lines, tabs)
 	lines = append(lines, "") // Empty line after header
@@ -50,6 +57,20 @@ func (p *Plugin) renderWelcomeGuide(width, height int) string {
 
 	// Section Style
 	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62"))
+	warningStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+
+	// Check if tmux is installed
+	if !isTmuxInstalled() {
+		lines = append(lines, warningStyle.Render("⚠ tmux Required"))
+		lines = append(lines, "")
+		lines = append(lines, dimText("Worktrees and shell sessions require tmux to be installed."))
+		lines = append(lines, "")
+		lines = append(lines, sectionStyle.Render("Install tmux:"))
+		lines = append(lines, dimText("  "+getTmuxInstallInstructions()))
+		lines = append(lines, "")
+		lines = append(lines, dimText("After installing, restart sidecar to use this feature."))
+		return strings.Join(lines, "\n")
+	}
 
 	// Git Worktree Explanation
 	lines = append(lines, sectionStyle.Render("Git Worktrees: A Better Workflow"))
@@ -278,6 +299,20 @@ func (p *Plugin) renderShellPrimer(width, height int) string {
 
 	// Section style
 	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62"))
+	warningStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+
+	// Check if tmux is installed
+	if !isTmuxInstalled() {
+		lines = append(lines, warningStyle.Render("⚠ tmux Required"))
+		lines = append(lines, "")
+		lines = append(lines, dimText("The project shell requires tmux to be installed."))
+		lines = append(lines, "")
+		lines = append(lines, sectionStyle.Render("Install tmux:"))
+		lines = append(lines, dimText("  "+getTmuxInstallInstructions()))
+		lines = append(lines, "")
+		lines = append(lines, dimText("After installing, restart sidecar to use this feature."))
+		return strings.Join(lines, "\n")
+	}
 
 	// Title
 	lines = append(lines, sectionStyle.Render("Project Shell"))

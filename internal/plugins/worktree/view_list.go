@@ -84,13 +84,16 @@ func (p *Plugin) renderListView(width, height int) string {
 		// Register hit region for full-width preview
 		p.mouseHandler.HitMap.AddRect(regionPreviewPane, 0, 0, width, paneHeight, nil)
 
-		// Register preview tab hit regions (same as sidebar-visible case)
-		// X starts at 2 (1 for border + 1 for panel padding)
-		tabWidths := []int{10, 8, 8} // " Output " + padding, " Diff " + padding, " Task " + padding
-		tabX := 2
-		for i, tabWidth := range tabWidths {
-			p.mouseHandler.HitMap.AddRect(regionPreviewTab, tabX, 1, tabWidth, 1, i)
-			tabX += tabWidth + 1
+		// Register preview tab hit regions only when a worktree is selected (not shell)
+		// Shell has no tabs - it shows primer/output directly
+		if !p.shellSelected {
+			// X starts at 2 (1 for border + 1 for panel padding)
+			tabWidths := []int{10, 8, 8} // " Output " + padding, " Diff " + padding, " Task " + padding
+			tabX := 2
+			for i, tabWidth := range tabWidths {
+				p.mouseHandler.HitMap.AddRect(regionPreviewTab, tabX, 1, tabWidth, 1, i)
+				tabX += tabWidth + 1
+			}
 		}
 
 		previewContent := p.renderPreviewContent(width-4, innerHeight)
@@ -124,16 +127,20 @@ func (p *Plugin) renderListView(width, height int) string {
 	p.mouseHandler.HitMap.AddRect(regionPaneDivider, sidebarW, 0, dividerHitWidth, paneHeight, nil)
 
 	// 3. Preview tab hit regions (highest priority for tabs)
-	// Tabs are rendered at Y=1 (first line inside panel border)
-	// X starts at sidebarW + dividerWidth + 2 (1 for border + 1 for padding)
-	previewPaneX := sidebarW + dividerWidth + 2 // +1 for border, +1 for panel padding
-	// Tab widths: text is " Output " (8), " Diff " (6), " Task " (6)
-	// Plus BarChip Padding(0,1) adds 2 chars = 10, 8, 8 visual width
-	tabWidths := []int{10, 8, 8}
-	tabX := previewPaneX
-	for i, tabWidth := range tabWidths {
-		p.mouseHandler.HitMap.AddRect(regionPreviewTab, tabX, 1, tabWidth, 1, i)
-		tabX += tabWidth + 1 // +1 for spacing between tabs
+	// Only register when a worktree is selected (not shell)
+	// Shell has no tabs - it shows primer/output directly
+	if !p.shellSelected {
+		// Tabs are rendered at Y=1 (first line inside panel border)
+		// X starts at sidebarW + dividerWidth + 2 (1 for border + 1 for padding)
+		previewPaneX := sidebarW + dividerWidth + 2 // +1 for border, +1 for panel padding
+		// Tab widths: text is " Output " (8), " Diff " (6), " Task " (6)
+		// Plus BarChip Padding(0,1) adds 2 chars = 10, 8, 8 visual width
+		tabWidths := []int{10, 8, 8}
+		tabX := previewPaneX
+		for i, tabWidth := range tabWidths {
+			p.mouseHandler.HitMap.AddRect(regionPreviewTab, tabX, 1, tabWidth, 1, i)
+			tabX += tabWidth + 1 // +1 for spacing between tabs
+		}
 	}
 
 	// Render content for each pane (subtract 4 for border + padding: 2 border + 2 padding)
@@ -216,34 +223,42 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 	p.visibleCount = (contentHeight - 3) / itemHeight
 
 	// Render worktree items
-	if len(p.worktrees) == 0 && !p.shellSelected {
-		// Calculate vertical centering for empty state
-		emptyStateHeight := 2 // "No worktrees" + "Press 'n'..."
-		emptyStartY := (contentHeight - emptyStateHeight) / 2
-		if emptyStartY < 0 {
-			emptyStartY = 0
-		}
+	if len(p.worktrees) == 0 {
+		// No worktrees exist - show empty state message (unless shell is selected)
+		if !p.shellSelected {
+			// Calculate vertical centering for empty state
+			emptyStateHeight := 2 // "No worktrees" + "Press 'n'..."
+			emptyStartY := (contentHeight - emptyStateHeight) / 2
+			if emptyStartY < 0 {
+				emptyStartY = 0
+			}
 
-		// Add padding lines before empty state message
-		for i := 0; i < emptyStartY; i++ {
-			lines = append(lines, "")
-		}
+			// Add padding lines before empty state message
+			for i := 0; i < emptyStartY; i++ {
+				lines = append(lines, "")
+			}
 
-		// Center the text horizontally
-		msg1 := "No worktrees"
-		msg2 := "Press 'n' to create one"
-		pad1 := (width - len(msg1)) / 2
-		pad2 := (width - len(msg2)) / 2
-		if pad1 < 0 {
-			pad1 = 0
-		}
-		if pad2 < 0 {
-			pad2 = 0
-		}
+			// Center the text horizontally
+			msg1 := "No worktrees"
+			msg2 := "Press 'n' to create one"
+			pad1 := (width - len(msg1)) / 2
+			pad2 := (width - len(msg2)) / 2
+			if pad1 < 0 {
+				pad1 = 0
+			}
+			if pad2 < 0 {
+				pad2 = 0
+			}
 
-		lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad1)+msg1))
-		lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad2)+msg2))
+			lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad1)+msg1))
+			lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad2)+msg2))
+		}
+		// When shell is selected and no worktrees, just show the shell entry (already rendered above)
 	} else {
+		// Guard against negative scrollOffset
+		if p.scrollOffset < 0 {
+			p.scrollOffset = 0
+		}
 		for i := p.scrollOffset; i < len(p.worktrees) && i < p.scrollOffset+p.visibleCount; i++ {
 			wt := p.worktrees[i]
 			// Only show as selected if not shellSelected AND index matches

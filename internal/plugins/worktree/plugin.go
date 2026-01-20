@@ -236,7 +236,7 @@ func New() *Plugin {
 		truncateCache:       ui.NewTruncateCache(1000), // Cache up to 1000 truncations
 		markdownRenderer:    mdRenderer,
 		taskMarkdownMode:    true, // Default to rendered mode
-		shellSelected:       true, // Shell entry selected by default (first item)
+		shellSelected:       false, // Start with first worktree selected, not shell
 	}
 }
 
@@ -581,6 +581,9 @@ func (p *Plugin) moveCursor(delta int) {
 			p.selectedIdx = 0
 		}
 		// Moving up from shell stays on shell (already at top)
+	} else if len(p.worktrees) == 0 {
+		// No worktrees exist, any navigation selects the shell
+		p.shellSelected = true
 	} else {
 		// Currently on a worktree
 		if delta < 0 && p.selectedIdx == 0 {
@@ -614,6 +617,10 @@ func (p *Plugin) ensureVisible() {
 	}
 	if p.visibleCount > 0 && p.selectedIdx >= p.scrollOffset+p.visibleCount {
 		p.scrollOffset = p.selectedIdx - p.visibleCount + 1
+	}
+	// Guard against negative scroll offset (can happen with empty worktree list)
+	if p.scrollOffset < 0 {
+		p.scrollOffset = 0
 	}
 }
 

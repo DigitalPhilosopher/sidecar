@@ -60,16 +60,22 @@ func (p *Plugin) Commands() []plugin.Command {
 			cmds := []plugin.Command{
 				{ID: "switch-pane", Name: "Focus", Description: "Switch to sidebar", Context: "worktree-preview", Priority: 1},
 				{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Context: "worktree-preview", Priority: 2},
-				{ID: "prev-tab", Name: "Tab←", Description: "Previous preview tab", Context: "worktree-preview", Priority: 3},
-				{ID: "next-tab", Name: "Tab→", Description: "Next preview tab", Context: "worktree-preview", Priority: 4},
 			}
-			// Add diff view toggle when on Diff tab
-			if p.previewTab == PreviewTabDiff {
-				diffViewName := "Split"
-				if p.diffViewMode == DiffViewSideBySide {
-					diffViewName = "Unified"
+			// Tab commands only shown when a worktree is selected (not shell)
+			// Shell has no tabs - it shows primer/output directly
+			if !p.shellSelected {
+				cmds = append(cmds,
+					plugin.Command{ID: "prev-tab", Name: "Tab←", Description: "Previous preview tab", Context: "worktree-preview", Priority: 3},
+					plugin.Command{ID: "next-tab", Name: "Tab→", Description: "Next preview tab", Context: "worktree-preview", Priority: 4},
+				)
+				// Add diff view toggle when on Diff tab
+				if p.previewTab == PreviewTabDiff {
+					diffViewName := "Split"
+					if p.diffViewMode == DiffViewSideBySide {
+						diffViewName = "Unified"
+					}
+					cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Toggle unified/side-by-side diff", Context: "worktree-preview", Priority: 5})
 				}
-				cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Toggle unified/side-by-side diff", Context: "worktree-preview", Priority: 5})
 			}
 			// Also show agent commands in preview pane
 			wt := p.selectedWorktree()

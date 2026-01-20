@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +15,35 @@ import (
 const (
 	shellSessionPrefix = "sidecar-sh-" // Distinct from worktree prefix "sidecar-wt-"
 )
+
+// tmuxInstalled caches whether tmux is available in PATH.
+// Checked once and cached to avoid repeated exec calls.
+var (
+	tmuxInstalledOnce   sync.Once
+	tmuxInstalledCached bool
+)
+
+// isTmuxInstalled returns true if tmux is available in PATH.
+// Result is cached after first check.
+func isTmuxInstalled() bool {
+	tmuxInstalledOnce.Do(func() {
+		_, err := exec.LookPath("tmux")
+		tmuxInstalledCached = err == nil
+	})
+	return tmuxInstalledCached
+}
+
+// getTmuxInstallInstructions returns platform-specific tmux install instructions.
+func getTmuxInstallInstructions() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "brew install tmux"
+	case "linux":
+		return "sudo apt install tmux  # or: sudo dnf install tmux"
+	default:
+		return "Install tmux from your package manager"
+	}
+}
 
 // Shell session messages
 type (
