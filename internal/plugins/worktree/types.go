@@ -2,10 +2,15 @@ package worktree
 
 import (
 	"hash/maphash"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// mouseEscapeRegex matches SGR mouse escape sequences like \x1b[<35;192;47M or \x1b[<0;50;20m
+// These can appear in captured tmux output when applications have mouse mode enabled.
+var mouseEscapeRegex = regexp.MustCompile(`\x1b\[<\d+;\d+;\d+[Mm]`)
 
 // ViewMode represents the current view state.
 type ViewMode int
@@ -296,6 +301,10 @@ func (b *OutputBuffer) Update(content string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// Strip mouse escape sequences that can leak into captured tmux output
+	// when applications have mouse mode enabled
+	content = mouseEscapeRegex.ReplaceAllString(content, "")
+
 	// Compute hash of new content
 	hash := maphash.String(b.hashSeed, content)
 	if hash == b.lastHash && len(content) == b.lastLen {
@@ -320,6 +329,9 @@ func (b *OutputBuffer) Update(content string) bool {
 func (b *OutputBuffer) Write(content string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Strip mouse escape sequences
+	content = mouseEscapeRegex.ReplaceAllString(content, "")
 
 	// Replace instead of append to avoid duplication
 	b.lines = strings.Split(content, "\n")
