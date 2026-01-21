@@ -232,6 +232,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			agent := &Agent{
 				Type:        msg.AgentType,
 				TmuxSession: msg.SessionName,
+				TmuxPane:    msg.PaneID, // Store pane ID for interactive mode
 				StartedAt:   time.Now(),
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 			}
