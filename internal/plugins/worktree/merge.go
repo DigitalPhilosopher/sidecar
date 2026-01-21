@@ -563,7 +563,7 @@ func (p *Plugin) cleanupAfterMerge(wt *Worktree) tea.Cmd {
 		globalPaneCache.remove(sessionName)
 
 		// Remove worktree
-		if err := doDeleteWorktree(path); err != nil {
+		if err := doDeleteWorktree(p.ctx.WorkDir, path); err != nil {
 			return MergeStepCompleteMsg{
 				WorktreeName: name,
 				Step:         MergeStepCleanup,
@@ -649,7 +649,7 @@ func (p *Plugin) performSelectedCleanup(wt *Worktree, state *MergeWorkflowState)
 
 		// Delete local worktree if selected
 		if state.DeleteLocalWorktree {
-			if err := doDeleteWorktree(path); err != nil {
+			if err := doDeleteWorktree(p.ctx.WorkDir, path); err != nil {
 				results.Errors = append(results.Errors, fmt.Sprintf("Worktree: %v", err))
 			} else {
 				results.LocalWorktreeDeleted = true

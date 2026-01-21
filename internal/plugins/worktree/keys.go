@@ -245,7 +245,7 @@ func (p *Plugin) executeDelete() tea.Cmd {
 		var warnings []string
 
 		// Delete the worktree first
-		err := doDeleteWorktree(path)
+		err := doDeleteWorktree(workDir, path)
 		if err != nil {
 			return DeleteDoneMsg{Name: name, Err: err}
 		}

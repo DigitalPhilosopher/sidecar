@@ -186,21 +186,23 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.promptPicker = nil
 
 	case DeleteDoneMsg:
-		if msg.Err == nil {
-			p.removeWorktreeByName(msg.Name)
-			if p.selectedIdx >= len(p.worktrees) && p.selectedIdx > 0 {
-				p.selectedIdx--
-			}
-			// Store any warnings for display
-			p.deleteWarnings = msg.Warnings
-			// Clear preview pane content to ensure old diff doesn't persist
-			p.diffContent = ""
-			p.diffRaw = ""
-			p.cachedTaskID = ""
-			p.cachedTask = nil
-			// Load diff for newly selected worktree
-			cmds = append(cmds, p.loadSelectedDiff())
+		if msg.Err != nil {
+			p.deleteWarnings = []string{fmt.Sprintf("Delete failed: %v", msg.Err)}
+			break
 		}
+		p.removeWorktreeByName(msg.Name)
+		if p.selectedIdx >= len(p.worktrees) && p.selectedIdx > 0 {
+			p.selectedIdx--
+		}
+		// Store any warnings for display
+		p.deleteWarnings = msg.Warnings
+		// Clear preview pane content to ensure old diff doesn't persist
+		p.diffContent = ""
+		p.diffRaw = ""
+		p.cachedTaskID = ""
+		p.cachedTask = nil
+		// Load diff for newly selected worktree
+		cmds = append(cmds, p.loadSelectedDiff())
 
 	case RemoteCheckDoneMsg:
 		// Update delete modal with remote branch existence info

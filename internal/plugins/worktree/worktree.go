@@ -205,15 +205,17 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, ag
 }
 
 // doDeleteWorktree removes a worktree.
-func doDeleteWorktree(path string) error {
+func doDeleteWorktree(workDir, path string) error {
 	// First try without force
 	cmd := exec.Command("git", "worktree", "remove", path)
+	cmd.Dir = workDir
 	if err := cmd.Run(); err == nil {
 		return nil
 	}
 
 	// If that fails, try with force
 	cmd = exec.Command("git", "worktree", "remove", "--force", path)
+	cmd.Dir = workDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree remove: %s: %w", strings.TrimSpace(string(output)), err)
 	}
@@ -743,4 +745,3 @@ func (p *Plugin) loadTaskDetails(taskID string) tea.Cmd {
 		}
 	}
 }
-
