@@ -2,6 +2,17 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.38.0] - 2026-01-22
+
+### Features
+- **Interactive Mode**: Beta interactive shell mode behind feature flag (`features.interactiveMode`)
+
+### Improvements
+- **Worktree**: Modal keyboard navigation with tab/shift+tab cycling
+
+### Dependencies
+- Updated embedded td to v0.20.0
+
 ## [v0.37.0] - 2026-01-21
 
 ### Dependencies
