@@ -2,6 +2,16 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.40.0] - 2026-01-22
+
+### Performance
+- **Interactive Mode**: Improved output capture and rendering performance
+- **Interactive Mode**: Enhanced auto-scroll alignment with interactive content
+- **Interactive Mode**: Fixed cursor spacing and synchronized pane sizing
+
+### Dependencies
+- Updated embedded td to latest version
+
 ## [v0.39.0] - 2026-01-22
 
 ### Performance
