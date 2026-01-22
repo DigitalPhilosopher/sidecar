@@ -1,15 +1,5 @@
 package keymap
 
-import "github.com/marcus/sidecar/internal/plugin"
-
-// Binding maps a key to a command in a specific context.
-type Binding struct {
-	Key      string
-	Command  string
-	Context  string // plugin ID or sub-context (e.g., "git-status", "git-diff")
-	Priority int    // 1=highest, 0=default (99)
-}
-
 // DefaultBindings returns the default keymap.
 func DefaultBindings() []Binding {
 	return []Binding{
@@ -76,7 +66,7 @@ func DefaultBindings() []Binding {
 		{Key: "y", Command: "yank-file", Context: "git-status"},
 		{Key: "Y", Command: "yank-path", Context: "git-status"},
 		{Key: "x", Command: "discard-changes", Context: "git-status"},
-		{Key: "\", Command: "toggle-sidebar", Context: "git-status"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "git-status"},
 
 		// Git status commits context (sidebar)
 		{Key: "j", Command: "cursor-down", Context: "git-status-commits"},
@@ -94,7 +84,7 @@ func DefaultBindings() []Binding {
 		{Key: "N", Command: "prev-match", Context: "git-status-commits"},
 		{Key: "o", Command: "open-in-github", Context: "git-status-commits"},
 		{Key: "v", Command: "toggle-graph", Context: "git-status-commits"},
-		{Key: "\", Command: "toggle-sidebar", Context: "git-status-commits"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "git-status-commits"},
 
 		// Git status diff context (inline)
 		{Key: "j", Command: "scroll-down", Context: "git-status-diff"},
@@ -104,7 +94,7 @@ func DefaultBindings() []Binding {
 		{Key: "enter", Command: "full-diff", Context: "git-status-diff"},
 		{Key: "s", Command: "stage-file", Context: "git-status-diff"},
 		{Key: "u", Command: "unstage-file", Context: "git-status-diff"},
-		{Key: "\", Command: "toggle-sidebar", Context: "git-status-diff"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "git-status-diff"},
 
 		// Git commit preview context
 		{Key: "j", Command: "scroll-down", Context: "git-commit-preview"},
@@ -160,7 +150,7 @@ func DefaultBindings() []Binding {
 		{Key: "right", Command: "focus-right", Context: "conversations-sidebar"},
 		{Key: "v", Command: "toggle-view", Context: "conversations-sidebar"},
 		{Key: "enter", Command: "select-session", Context: "conversations-sidebar"},
-		{Key: "\", Command: "toggle-sidebar", Context: "conversations-sidebar"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "conversations-sidebar"},
 		{Key: "y", Command: "yank-details", Context: "conversations-sidebar"},
 		{Key: "Y", Command: "yank-resume", Context: "conversations-sidebar"},
 
@@ -177,7 +167,7 @@ func DefaultBindings() []Binding {
 		{Key: "v", Command: "toggle-view", Context: "conversations-main"},
 		{Key: "e", Command: "expand", Context: "conversations-main"},
 		{Key: "enter", Command: "detail", Context: "conversations-main"},
-		{Key: "\", Command: "toggle-sidebar", Context: "conversations-main"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "conversations-main"},
 		{Key: "y", Command: "yank-details", Context: "conversations-main"},
 		{Key: "Y", Command: "yank-resume", Context: "conversations-main"},
 
@@ -204,7 +194,7 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+r", Command: "reveal", Context: "file-browser-tree"},
 		{Key: "i", Command: "info", Context: "file-browser-tree"},
 		{Key: "B", Command: "blame", Context: "file-browser-tree"},
-		{Key: "\", Command: "toggle-sidebar", Context: "file-browser-tree"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "file-browser-tree"},
 		{Key: "I", Command: "toggle-ignored", Context: "file-browser-tree"},
 
 		// File browser preview context
@@ -226,7 +216,7 @@ func DefaultBindings() []Binding {
 		{Key: "h", Command: "back", Context: "file-browser-preview"},
 		{Key: "y", Command: "yank-contents", Context: "file-browser-preview"},
 		{Key: "Y", Command: "yank-path", Context: "file-browser-preview"},
-		{Key: "\", Command: "toggle-sidebar", Context: "file-browser-preview"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "file-browser-preview"},
 
 		// File browser tree search context
 		{Key: "esc", Command: "cancel", Context: "file-browser-search"},
@@ -289,20 +279,20 @@ func DefaultBindings() []Binding {
 		{Key: "N", Command: "reject", Context: "worktree-list"},
 		{Key: "tab", Command: "switch-pane", Context: "worktree-list"},
 		{Key: "shift+tab", Command: "switch-pane", Context: "worktree-list"},
-		{Key: "\", Command: "toggle-sidebar", Context: "worktree-list"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "worktree-list"},
 		{Key: "[", Command: "prev-tab", Context: "worktree-list"},
 		{Key: "]", Command: "next-tab", Context: "worktree-list"},
 
 		// Worktree preview context
 		{Key: "tab", Command: "switch-pane", Context: "worktree-preview"},
 		{Key: "shift+tab", Command: "switch-pane", Context: "worktree-preview"},
-		{Key: "\", Command: "toggle-sidebar", Context: "worktree-preview"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "worktree-preview"},
 		{Key: "[", Command: "prev-tab", Context: "worktree-preview"},
 		{Key: "]", Command: "next-tab", Context: "worktree-preview"},
 		{Key: "j", Command: "scroll-down", Context: "worktree-preview"},
 		{Key: "k", Command: "scroll-up", Context: "worktree-preview"},
 		{Key: "ctrl+d", Command: "page-down", Context: "worktree-preview"},
-		{Key: "ctrl+u", Command: "page-up", Context: "worktree-preview"}
+		{Key: "ctrl+u", Command: "page-up", Context: "worktree-preview"},
 	}
 }
 
@@ -316,3 +306,10 @@ const (
 	CategorySearch     Category = "Search"
 	CategorySystem     Category = "System"
 )
+
+// RegisterDefaults registers all default bindings with the given registry.
+func RegisterDefaults(r *Registry) {
+	for _, binding := range DefaultBindings() {
+		r.RegisterBinding(binding)
+	}
+}
