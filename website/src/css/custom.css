@@ -245,9 +245,10 @@ a:hover {
   position: absolute;
   inset: -60px;
   background:
-    radial-gradient(900px 420px at 20% 10%, rgba(249, 38, 114, 0.14), transparent 60%),
-    radial-gradient(900px 420px at 80% 5%, rgba(102, 217, 239, 0.12), transparent 60%),
-    radial-gradient(900px 520px at 55% 85%, rgba(166, 226, 46, 0.10), transparent 60%);
+    radial-gradient(520px 260px at 50% 8%, rgba(174, 129, 255, 0.22), transparent 60%),
+    radial-gradient(900px 420px at 35% 12%, rgba(249, 38, 114, 0.16), transparent 60%),
+    radial-gradient(900px 420px at 65% 10%, rgba(102, 217, 239, 0.14), transparent 60%),
+    radial-gradient(900px 520px at 50% 85%, rgba(166, 226, 46, 0.10), transparent 60%);
   pointer-events: none;
 }
 
@@ -355,11 +356,32 @@ a:hover {
   letter-spacing: -0.1px;
   background: linear-gradient(90deg,
     var(--sc-tagline-start, var(--ifm-color-primary)) 0%,
-    var(--sc-tagline-middle, var(--sc-purple)) 50%,
+    var(--sc-tagline-middle, var(--sc-purple)) 35%,
+    rgba(255, 255, 255, 0.55) 50%,
+    var(--sc-tagline-middle, var(--sc-purple)) 65%,
     var(--sc-tagline-start, var(--ifm-color-primary)) 100%);
+  background-size: 200% 100%;
+  animation: sc-tagline-glisten 9s ease-in-out infinite;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+@keyframes sc-tagline-glisten {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-titleTagline {
+    animation: none;
+    background-position: 50% 50%;
+  }
 }
 
 .sc-subtitle {
