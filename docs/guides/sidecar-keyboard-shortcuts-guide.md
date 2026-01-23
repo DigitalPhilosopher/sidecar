@@ -284,8 +284,36 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 | `git-commit-preview` | Commit preview | Commit detail in right pane |
 | `git-diff` | Full diff | Full-screen diff view |
 | `git-commit` | Commit editor | Text input active |
+| `git-push-menu` | Push menu | Push strategy selection |
+| `git-pull-menu` | Pull menu | Pull strategy selection |
+| `git-pull-conflict` | Pull conflict | Conflict resolution modal |
 | `git-history` | History view | Commit history |
 | `git-commit-detail` | Commit detail | Single commit view |
+
+#### Git Status File List Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `s` | stage-file | Stage selected file |
+| `u` | unstage-file | Unstage selected file |
+| `S` | stage-all | Stage all modified files |
+| `U` | unstage-all | Unstage all files |
+| `c` | commit | Open commit editor (requires staged files) |
+| `A` | amend | Amend last commit (no staged files required) |
+| `d`/`enter` | show-diff | View file changes |
+| `D` | discard-changes | Discard unstaged changes |
+| `h` | show-history | Open commit history |
+| `P` | push | Open push menu |
+| `L` | pull | Open pull menu |
+| `f` | fetch | Fetch from remote |
+| `b` | branch | Branch operations |
+| `z` | stash | Stash changes |
+| `Z` | stash-pop | Pop stash |
+| `o` | open-in-github | Open file in GitHub |
+| `O` | open-in-file-browser | Open in file browser |
+| `y` | yank-file | Copy file info |
+| `Y` | yank-path | Copy file path |
+| `r` | refresh | Refresh status |
+| `\` | toggle-sidebar | Collapse/expand sidebar |
 
 #### Git Status Commit List Shortcuts
 | Key | Command | Description |
@@ -304,6 +332,21 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 | `o` | open-in-github | Open commit in GitHub |
 | `v` | toggle-graph | Toggle commit graph (tree view) |
 | `\` | toggle-sidebar | Collapse/expand sidebar |
+
+#### Git Pull Menu Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `p` | pull-merge | Pull with merge (default) |
+| `r` | pull-rebase | Pull with rebase |
+| `f` | pull-ff-only | Pull fast-forward only |
+| `a` | pull-autostash | Pull rebase + autostash |
+| `Esc` | cancel | Close pull menu |
+
+#### Git Pull Conflict Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `a` | abort-pull | Abort the merge/rebase |
+| `Esc` | dismiss | Dismiss modal, resolve manually |
 
 ### File Browser Plugin
 | Context | View | Description |
@@ -340,22 +383,22 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 
 Tab navigation shortcuts (`[`/`]`, `x`) also work in the preview pane.
 
-### Worktrees Plugin
+### Workspaces Plugin
 | Context | View | Description |
 |---------|------|-------------|
-| `worktree-list` | Worktree list | Root view, 'q' quits |
-| `worktree-preview` | Preview pane | Preview pane focused |
-| `worktree-create` | Create form | Create worktree input |
-| `worktree-task-link` | Task linking | Task selection modal |
-| `worktree-merge` | Merge workflow | Merge workflow modal |
+| `workspace-list` | Workspace list | Root view, 'q' quits |
+| `workspace-preview` | Preview pane | Preview pane focused |
+| `workspace-create` | Create form | Create worktree input |
+| `workspace-task-link` | Task linking | Task selection modal |
+| `workspace-merge` | Merge workflow | Merge workflow modal |
 
-#### Worktree List Shortcuts
+#### Workspace List Shortcuts
 | Key | Command | Description |
 |-----|---------|-------------|
-| `n` | new-worktree | Create new worktree |
+| `n` | new-workspace | Create new workspace |
 | `v` | toggle-view | Toggle list/kanban view |
 | `r` | refresh | Refresh worktree list |
-| `D` | delete-worktree | Delete selected worktree |
+| `D` | delete-workspace | Delete selected workspace |
 | `p` | push | Push branch to remote |
 | `m` | merge-workflow | Start merge workflow |
 | `t` | link-task | Link/unlink task |
@@ -397,7 +440,7 @@ In root contexts, pressing 'q' shows the quit confirmation. In non-root contexts
 - `conversations`, `conversations-sidebar`
 - `git-status`, `git-status-commits`, `git-status-diff`
 - `file-browser-tree`
-- `worktree-list`
+- `workspace-list`
 - `td-monitor`
 
 **Non-root contexts** (q = back/close):
@@ -405,7 +448,7 @@ In root contexts, pressing 'q' shows the quit confirmation. In non-root contexts
 - `conversation-detail`, `message-detail`, `analytics`
 - `git-diff`, `git-commit`, `git-history`, etc.
 - `file-browser-preview`, etc.
-- `worktree-create`, `worktree-task-link`, `worktree-merge`, `worktree-preview`
+- `workspace-create`, `workspace-task-link`, `workspace-merge`, `workspace-preview`
 - `td-modal`, `td-stats`, `td-search`, `td-confirm`, `td-epic-tasks`, `td-parent-epic`, `td-handoffs`
 
 ## Complete Example: Adding "edit" to File Browser

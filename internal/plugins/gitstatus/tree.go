@@ -434,6 +434,13 @@ func (t *FileTree) StageAll() error {
 	return cmd.Run()
 }
 
+// UnstageAll unstages all staged files.
+func (t *FileTree) UnstageAll() error {
+	cmd := exec.Command("git", "reset", "HEAD")
+	cmd.Dir = t.workDir
+	return cmd.Run()
+}
+
 // HasStagedFiles returns true if there are any staged files.
 func (t *FileTree) HasStagedFiles() bool {
 	return len(t.Staged) > 0
@@ -448,6 +455,20 @@ func (t *FileTree) StagedStats() (additions, deletions int) {
 	return
 }
 
+// parseCommitHash extracts the commit hash from git commit output.
+// Format: "[branch hash] message"
+func parseCommitHash(output string) string {
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		re := regexp.MustCompile(`\[[\w/-]+ ([a-f0-9]+)\]`)
+		matches := re.FindStringSubmatch(lines[0])
+		if len(matches) > 1 {
+			return matches[1]
+		}
+	}
+	return ""
+}
+
 // ExecuteCommit executes a git commit with the given message.
 // Returns the commit hash on success or an error with git output on failure.
 func ExecuteCommit(workDir, message string) (string, error) {
@@ -457,18 +478,29 @@ func ExecuteCommit(workDir, message string) (string, error) {
 	if err != nil {
 		return "", &CommitError{Output: string(output), Err: err}
 	}
+	return parseCommitHash(string(output)), nil
+}
 
-	// Parse output for commit hash (format: '[branch hash] message')
-	lines := strings.Split(string(output), "\n")
-	if len(lines) > 0 {
-		// Extract hash from "[branch hash] message"
-		re := regexp.MustCompile(`\[[\w/-]+ ([a-f0-9]+)\]`)
-		matches := re.FindStringSubmatch(lines[0])
-		if len(matches) > 1 {
-			return matches[1], nil
-		}
+// ExecuteAmend executes a git commit --amend with the given message.
+func ExecuteAmend(workDir, message string) (string, error) {
+	cmd := exec.Command("git", "commit", "--amend", "-m", message)
+	cmd.Dir = workDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", &CommitError{Output: string(output), Err: err}
 	}
-	return "", nil
+	return parseCommitHash(string(output)), nil
+}
+
+// getLastCommitMessage returns the message of the most recent commit.
+func getLastCommitMessage(workDir string) string {
+	cmd := exec.Command("git", "log", "-1", "--format=%B")
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(output), "\n")
 }
 
 // CommitError wraps a git commit error with its output.

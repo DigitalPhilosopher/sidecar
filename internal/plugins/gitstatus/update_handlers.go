@@ -105,6 +105,14 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 
+	case "L":
+		// Open pull menu
+		if p.canPull() && !p.pullInProgress {
+			p.pullMenuReturnMode = p.viewMode
+			p.viewMode = ViewModePullMenu
+			p.pullMenuFocus = 0
+		}
+
 	case "tab", "shift+tab":
 		// Switch focus to diff pane (if sidebar visible)
 		if p.sidebarVisible && (p.selectedDiffFile != "" || p.previewCommit != nil) {
@@ -201,6 +209,22 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 		}
 
+	case "U":
+		// Unstage all files
+		if err := p.tree.UnstageAll(); err == nil {
+			return p, tea.Batch(p.refresh(), p.loadRecentCommits())
+		}
+
+	case "h":
+		// Jump cursor to commits section (show history)
+		fileCount := len(entries)
+		commits := p.activeCommits()
+		if len(commits) > 0 && p.cursor < fileCount {
+			p.cursor = fileCount
+			p.ensureCommitVisible(0)
+			return p, p.autoLoadCommitPreview()
+		}
+
 	case "O":
 		// Open file in file browser (for files only, not commits)
 		if !p.cursorOnCommit() && len(entries) > 0 && p.cursor < len(entries) {
@@ -213,6 +237,17 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if p.tree.HasStagedFiles() {
 			p.viewMode = ViewModeCommit
 			p.initCommitTextarea()
+			return p, nil
+		}
+
+	case "A":
+		// Amend last commit (no staged files required)
+		if len(p.recentCommits) > 0 {
+			p.commitAmend = true
+			p.viewMode = ViewModeCommit
+			p.initCommitTextarea()
+			msg := getLastCommitMessage(p.repoRoot)
+			p.commitMessage.SetValue(msg)
 			return p, nil
 		}
 
@@ -306,18 +341,11 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case "p":
-		// On commit: filter by path (open modal); on file: pull
+		// On commit: filter by path (open modal)
 		if p.cursorOnCommit() {
 			p.pathFilterMode = true
 			p.pathFilterInput = ""
 			return p, nil
-		}
-		// Pull from remote (only if no local changes to avoid conflicts)
-		if !p.pullInProgress {
-			p.pullInProgress = true
-			p.pullError = ""
-			p.pullSuccess = false
-			return p, p.doPull()
 		}
 
 	case "/":
@@ -661,6 +689,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "esc":
 		// Cancel commit, return to status
 		p.viewMode = ViewModeStatus
+		p.commitAmend = false
 		p.commitError = ""
 		return p, nil
 
@@ -696,7 +725,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
-// tryCommit attempts to execute the commit if message is valid.
+// tryCommit attempts to execute the commit (or amend) if message is valid.
 func (p *Plugin) tryCommit() tea.Cmd {
 	message := strings.TrimSpace(p.commitMessage.Value())
 	if message == "" {
@@ -704,6 +733,9 @@ func (p *Plugin) tryCommit() tea.Cmd {
 		return nil
 	}
 	p.commitInProgress = true
+	if p.commitAmend {
+		return p.doAmend(message)
+	}
 	return p.doCommit(message)
 }
 
@@ -733,6 +765,72 @@ func (p *Plugin) updatePushMenu(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "u":
 		// Push and set upstream (shortcut)
 		return p.executePushMenuAction(2)
+	}
+	return p, nil
+}
+
+// updatePullMenu handles key events in the pull menu.
+func (p *Plugin) updatePullMenu(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	const itemCount = 4 // merge, rebase, ff-only, autostash
+
+	switch msg.String() {
+	case "tab", "j", "down":
+		p.pullMenuFocus = (p.pullMenuFocus + 1) % itemCount
+		return p, nil
+	case "shift+tab", "k", "up":
+		p.pullMenuFocus = (p.pullMenuFocus - 1 + itemCount) % itemCount
+		return p, nil
+	case "enter":
+		return p.executePullMenuAction(p.pullMenuFocus)
+	case "esc", "q":
+		p.viewMode = p.pullMenuReturnMode
+		p.pullMenuFocus = 0
+		return p, nil
+	case "p":
+		return p.executePullMenuAction(0)
+	case "r":
+		return p.executePullMenuAction(1)
+	case "f":
+		return p.executePullMenuAction(2)
+	case "a":
+		return p.executePullMenuAction(3)
+	}
+	return p, nil
+}
+
+// executePullMenuAction executes the pull menu action at the given index.
+func (p *Plugin) executePullMenuAction(idx int) (plugin.Plugin, tea.Cmd) {
+	p.viewMode = p.pullMenuReturnMode
+	p.pullInProgress = true
+	p.pullError = ""
+	p.pullSuccess = false
+	p.pullMenuFocus = 0
+
+	switch idx {
+	case 0:
+		return p, p.doPull()
+	case 1:
+		return p, p.doPullRebase()
+	case 2:
+		return p, p.doPullFFOnly()
+	case 3:
+		return p, p.doPullAutostash()
+	}
+	return p, nil
+}
+
+// updatePullConflict handles key events in the pull conflict modal.
+func (p *Plugin) updatePullConflict(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	switch msg.String() {
+	case "a":
+		// Abort merge/rebase
+		p.viewMode = ViewModeStatus
+		return p, p.doAbortPull()
+	case "esc", "q":
+		// Dismiss modal (conflicts remain, user resolves manually)
+		p.viewMode = ViewModeStatus
+		p.pullConflictFiles = nil
+		return p, p.refresh()
 	}
 	return p, nil
 }

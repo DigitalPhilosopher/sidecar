@@ -58,14 +58,15 @@ func DefaultBindings() []Binding {
 		{Key: "h", Command: "show-history", Context: "git-status"},
 		{Key: "P", Command: "push", Context: "git-status"},
 		{Key: "f", Command: "fetch", Context: "git-status"},
-		{Key: "l", Command: "pull", Context: "git-status"},
+		{Key: "L", Command: "pull", Context: "git-status"},
 		{Key: "b", Command: "branch", Context: "git-status"},
-		{Key: "p", Command: "stash", Context: "git-status"},
-		{Key: "z", Command: "stash-pop", Context: "git-status"},
-		{Key: "o", Command: "open-in-file-browser", Context: "git-status"},
+		{Key: "z", Command: "stash", Context: "git-status"},
+		{Key: "Z", Command: "stash-pop", Context: "git-status"},
+		{Key: "O", Command: "open-in-file-browser", Context: "git-status"},
+		{Key: "o", Command: "open-in-github", Context: "git-status"},
 		{Key: "y", Command: "yank-file", Context: "git-status"},
 		{Key: "Y", Command: "yank-path", Context: "git-status"},
-		{Key: "x", Command: "discard-changes", Context: "git-status"},
+		{Key: "D", Command: "discard-changes", Context: "git-status"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "git-status"},
 
 		// Git status commits context (sidebar)
@@ -118,6 +119,17 @@ func DefaultBindings() []Binding {
 		{Key: "]", Command: "next-file", Context: "git-diff"},
 		{Key: "y", Command: "yank-diff", Context: "git-diff"},
 		{Key: "c", Command: "commit", Context: "git-diff"},
+
+		// Git pull menu context
+		{Key: "p", Command: "pull-merge", Context: "git-pull-menu"},
+		{Key: "r", Command: "pull-rebase", Context: "git-pull-menu"},
+		{Key: "f", Command: "pull-ff-only", Context: "git-pull-menu"},
+		{Key: "a", Command: "pull-autostash", Context: "git-pull-menu"},
+		{Key: "esc", Command: "cancel", Context: "git-pull-menu"},
+
+		// Git pull conflict context
+		{Key: "a", Command: "abort-pull", Context: "git-pull-conflict"},
+		{Key: "esc", Command: "dismiss", Context: "git-pull-conflict"},
 
 		// Git commit context
 		{Key: "ctrl+s", Command: "execute-commit", Context: "git-commit"},
@@ -265,37 +277,52 @@ func DefaultBindings() []Binding {
 		{Key: "enter", Command: "confirm", Context: "file-browser-line-jump"},
 
 		// Worktree context
-		{Key: "n", Command: "new-worktree", Context: "worktree-list"},
-		{Key: "v", Command: "toggle-view", Context: "worktree-list"},
-		{Key: "r", Command: "refresh", Context: "worktree-list"},
-		{Key: "D", Command: "delete-worktree", Context: "worktree-list"},
-		{Key: "p", Command: "push", Context: "worktree-list"},
-		{Key: "m", Command: "merge-workflow", Context: "worktree-list"},
-		{Key: "t", Command: "link-task", Context: "worktree-list"},
-		{Key: "s", Command: "start-agent", Context: "worktree-list"},
-		{Key: "enter", Command: "attach", Context: "worktree-list"},
-		{Key: "S", Command: "stop-agent", Context: "worktree-list"},
-		{Key: "y", Command: "approve", Context: "worktree-list"},
-		{Key: "N", Command: "reject", Context: "worktree-list"},
-		{Key: "tab", Command: "switch-pane", Context: "worktree-list"},
-		{Key: "shift+tab", Command: "switch-pane", Context: "worktree-list"},
-		{Key: "\\", Command: "toggle-sidebar", Context: "worktree-list"},
-		{Key: "[", Command: "prev-tab", Context: "worktree-list"},
-		{Key: "]", Command: "next-tab", Context: "worktree-list"},
+		{Key: "n", Command: "new-workspace", Context: "workspace-list"},
+		{Key: "v", Command: "toggle-view", Context: "workspace-list"},
+		{Key: "r", Command: "refresh", Context: "workspace-list"},
+		{Key: "D", Command: "delete-workspace", Context: "workspace-list"},
+		{Key: "d", Command: "show-diff", Context: "workspace-list"},
+		{Key: "p", Command: "push", Context: "workspace-list"},
+		{Key: "m", Command: "merge-workflow", Context: "workspace-list"},
+		{Key: "t", Command: "link-task", Context: "workspace-list"},
+		{Key: "s", Command: "start-agent", Context: "workspace-list"},
+		{Key: "enter", Command: "attach", Context: "workspace-list"},
+		{Key: "S", Command: "stop-agent", Context: "workspace-list"},
+		{Key: "y", Command: "approve", Context: "workspace-list"},
+		{Key: "Y", Command: "approve-all", Context: "workspace-list"},
+		{Key: "N", Command: "reject", Context: "workspace-list"},
+		{Key: "K", Command: "kill-shell", Context: "workspace-list"},
+		{Key: "l", Command: "focus-right", Context: "workspace-list"},
+		{Key: "right", Command: "focus-right", Context: "workspace-list"},
+		{Key: "tab", Command: "switch-pane", Context: "workspace-list"},
+		{Key: "shift+tab", Command: "switch-pane", Context: "workspace-list"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "workspace-list"},
+		{Key: "[", Command: "prev-tab", Context: "workspace-list"},
+		{Key: "]", Command: "next-tab", Context: "workspace-list"},
 
-		// Worktree preview context
-		{Key: "tab", Command: "switch-pane", Context: "worktree-preview"},
-		{Key: "shift+tab", Command: "switch-pane", Context: "worktree-preview"},
-		{Key: "\\", Command: "toggle-sidebar", Context: "worktree-preview"},
-		{Key: "[", Command: "prev-tab", Context: "worktree-preview"},
-		{Key: "]", Command: "next-tab", Context: "worktree-preview"},
-		{Key: "j", Command: "scroll-down", Context: "worktree-preview"},
-		{Key: "k", Command: "scroll-up", Context: "worktree-preview"},
-		{Key: "ctrl+d", Command: "page-down", Context: "worktree-preview"},
-		{Key: "ctrl+u", Command: "page-up", Context: "worktree-preview"},
+		// Workspace preview context
+		{Key: "h", Command: "focus-left", Context: "workspace-preview"},
+		{Key: "left", Command: "focus-left", Context: "workspace-preview"},
+		{Key: "esc", Command: "focus-left", Context: "workspace-preview"},
+		{Key: "s", Command: "start-agent", Context: "workspace-preview"},
+		{Key: "S", Command: "stop-agent", Context: "workspace-preview"},
+		{Key: "y", Command: "approve", Context: "workspace-preview"},
+		{Key: "Y", Command: "approve-all", Context: "workspace-preview"},
+		{Key: "N", Command: "reject", Context: "workspace-preview"},
+		{Key: "v", Command: "toggle-diff-view", Context: "workspace-preview"},
+		{Key: "0", Command: "reset-scroll", Context: "workspace-preview"},
+		{Key: "tab", Command: "switch-pane", Context: "workspace-preview"},
+		{Key: "shift+tab", Command: "switch-pane", Context: "workspace-preview"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "workspace-preview"},
+		{Key: "[", Command: "prev-tab", Context: "workspace-preview"},
+		{Key: "]", Command: "next-tab", Context: "workspace-preview"},
+		{Key: "j", Command: "scroll-down", Context: "workspace-preview"},
+		{Key: "k", Command: "scroll-up", Context: "workspace-preview"},
+		{Key: "ctrl+d", Command: "page-down", Context: "workspace-preview"},
+		{Key: "ctrl+u", Command: "page-up", Context: "workspace-preview"},
 
-		// Worktree interactive context bindings are registered dynamically
-		// by the worktree plugin Init() to reflect configured keys.
+		// Workspace interactive context bindings are registered dynamically
+		// by the workspace plugin Init() to reflect configured keys.
 	}
 }
 

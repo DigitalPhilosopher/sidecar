@@ -3,7 +3,7 @@ import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 
-const TABS = ['td', 'git', 'files', 'conversations', 'worktrees'];
+const TABS = ['td', 'git', 'files', 'conversations', 'workspaces'];
 
 const INSTALL_COMMAND = 'curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash';
 
@@ -57,6 +57,14 @@ function TdPane() {
             <span className="sc-bullet sc-bulletBlue" />
             <span>td-j0k1l2 Update API docs</span>
           </div>
+          <div className="sc-item">
+            <span className="sc-bullet sc-bulletBlue" />
+            <span>td-m3n4o5 Refactor css</span>
+          </div>
+          <div className="sc-item">
+            <span className="sc-bullet sc-bulletPink" />
+            <span>td-p6q7r8 Update dependencies</span>
+          </div>
         </div>
       </div>
       <div className="sc-tdSection">
@@ -64,6 +72,7 @@ function TdPane() {
         <div style={{ fontSize: 10 }}>
           <div><span className="sc-lineYellow">00:39</span> <span className="sc-lineDim">td-a1b2c3</span> Started</div>
           <div><span className="sc-lineYellow">00:15</span> <span className="sc-lineDim">td-d4e5f6</span> Created</div>
+          <div><span className="sc-lineYellow">23:42</span> <span className="sc-lineDim">td-g7h8i9</span> Blocked</div>
         </div>
       </div>
     </>
@@ -85,8 +94,16 @@ function GitPane() {
             <span>jwt.go</span>
           </div>
           <div className="sc-item">
+            <span className="sc-lineGreen">M</span>
+            <span>api_test.go</span>
+          </div>
+          <div className="sc-item">
             <span className="sc-linePink">D</span>
             <span>old_auth.go</span>
+          </div>
+          <div className="sc-item">
+            <span className="sc-lineGreen">M</span>
+            <span>README.md</span>
           </div>
         </div>
         <p className="sc-sectionTitle" style={{ marginTop: 10 }}>Commits</p>
@@ -94,6 +111,10 @@ function GitPane() {
           <div className="sc-item">
             <span className="sc-lineDim">736a844</span>
             <span>Minor fixes</span>
+          </div>
+          <div className="sc-item">
+            <span className="sc-lineDim">8b2c9d1</span>
+            <span>Update deps</span>
           </div>
         </div>
       </div>
@@ -137,6 +158,14 @@ function FilesPane() {
           <div className="sc-item" style={{ paddingLeft: 20 }}>
             <span className="sc-bullet sc-bulletBlue" />
             <span>jwt.go</span>
+          </div>
+          <div className="sc-item" style={{ paddingLeft: 20 }}>
+            <span className="sc-bullet sc-bulletDim" />
+            <span>utils.go</span>
+          </div>
+          <div className="sc-item" style={{ paddingLeft: 20 }}>
+            <span className="sc-bullet sc-bulletDim" />
+            <span>config.go</span>
           </div>
           <div className="sc-item" style={{ paddingLeft: 12 }}>
             <span className="sc-lineDim">[&gt;]</span>
@@ -189,6 +218,10 @@ function ConversationsPane() {
             <span className="sc-bullet sc-bulletBlue" />
             <span>api-docs <span className="sc-lineYellow" style={{ fontSize: 9 }}>Claude</span></span>
           </div>
+          <div className="sc-item">
+            <span className="sc-bullet sc-bulletGreen" />
+            <span>docs-refactor <span className="sc-lineYellow" style={{ fontSize: 9 }}>Claude</span></span>
+          </div>
         </div>
       </div>
       <div className="sc-paneMain">
@@ -202,6 +235,7 @@ function ConversationsPane() {
           <div style={{ height: 2 }} />
           <div><span className="sc-lineYellow">-&gt;</span> Read middleware.go</div>
           <div><span className="sc-lineYellow">-&gt;</span> Edit jwt.go</div>
+          <div><span className="sc-lineYellow">-&gt;</span> Read api_test.go</div>
           <div style={{ height: 2 }} />
           <div className="sc-lineDim">12.4k tokens | 24m</div>
         </div>
@@ -210,11 +244,11 @@ function ConversationsPane() {
   );
 }
 
-function WorktreesPane() {
+function WorkspacesPane() {
   return (
     <>
       <div className="sc-paneSidebar">
-        <p className="sc-sectionTitle">Worktrees</p>
+        <p className="sc-sectionTitle">Workspaces</p>
         <div className="sc-list">
           <div className="sc-item">
             <span className="sc-bullet sc-bulletGreen" />
@@ -232,6 +266,10 @@ function WorktreesPane() {
             <span className="sc-bullet sc-bulletBlue" />
             <span>docs/update</span>
           </div>
+          <div className="sc-item">
+            <span className="sc-bullet sc-bulletDim" />
+            <span>chore/deps</span>
+          </div>
         </div>
       </div>
       <div className="sc-paneMain">
@@ -242,7 +280,7 @@ function WorktreesPane() {
           <div><span className="sc-lineYellow">Prompts:</span> 3 configured</div>
           <div style={{ height: 3 }} />
           <div className="sc-lineDim">Actions:</div>
-          <div>  <span className="sc-lineGreen">[n]</span> New worktree + agent</div>
+          <div>  <span className="sc-lineGreen">[n]</span> New workspace + agent</div>
           <div>  <span className="sc-lineGreen">[s]</span> Send task from td</div>
           <div>  <span className="sc-lineGreen">[p]</span> Run prompt sequence</div>
           <div style={{ height: 3 }} />
@@ -274,8 +312,8 @@ function Frame({ activeTab, onTabChange }) {
       case 'git': return <GitPane />;
       case 'files': return <FilesPane />;
       case 'conversations': return <ConversationsPane />;
-      case 'worktrees': return <WorktreesPane />;
-      default: return <WorktreesPane />;
+      case 'workspaces': return <WorkspacesPane />;
+      default: return <WorkspacesPane />;
     }
   };
 
@@ -570,11 +608,11 @@ function ConversationsMockup() {
   );
 }
 
-function WorktreesMockup() {
+function WorkspacesMockup() {
   return (
-    <div className="sc-mockup sc-mockupWorktrees">
+    <div className="sc-mockup sc-mockupWorkspaces">
       <div className="sc-mockupHeader">
-        <span className="sc-mockupTitle">Worktrees</span>
+        <span className="sc-mockupTitle">Workspaces</span>
         <span className="sc-lineDim">zero commands | auto</span>
       </div>
       <div className="sc-mockupBody">
@@ -602,7 +640,7 @@ function WorktreesMockup() {
           </div>
         </div>
         <div className="sc-mockupMain">
-          <div className="sc-mockupWorktree">
+          <div className="sc-mockupWorkspace">
             <div className="sc-lineBlue" style={{ fontSize: 12, marginBottom: 6 }}>feature/auth</div>
             <div style={{ display: 'grid', gap: 3, fontSize: 10 }}>
               <div><span className="sc-lineDim">PR:</span> <span className="sc-lineGreen">#47 Add JWT auth</span></div>
@@ -611,7 +649,7 @@ function WorktreesMockup() {
             </div>
             <div style={{ marginTop: 8, fontSize: 10 }}>
               <div className="sc-lineDim" style={{ marginBottom: 3 }}>Quick actions</div>
-              <div><span className="sc-lineGreen">[n]</span> New worktree + agent</div>
+              <div><span className="sc-lineGreen">[n]</span> New workspace + agent</div>
               <div><span className="sc-lineGreen">[s]</span> Send task from td</div>
               <div><span className="sc-lineGreen">[p]</span> Run prompt sequence</div>
               <div><span className="sc-lineGreen">[m]</span> Merge & cleanup</div>
@@ -728,6 +766,10 @@ function WorkflowSection() {
   );
 }
 
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
+// ... (existing imports)
+
 export default function Home() {
   const { siteConfig } = useDocusaurusContext();
   const [activeTab, setActiveTab] = useState('td');
@@ -743,24 +785,26 @@ export default function Home() {
   return (
     <Layout
       title="You might never open your editor again"
-      description="AI agents write your code. Sidecar keeps you in the terminal for everything else: planning tasks, reviewing diffs, staging commits, managing worktrees."
+      description="AI agents write your code. Sidecar keeps you in the terminal for everything else: planning tasks, reviewing diffs, staging commits, managing workspaces."
     >
       <header className="sc-hero">
         <div className="container">
-          <div className="sc-heroInner">
-            <div>
-              <h1 className="sc-title">
-                <span className="sc-titleBrand">Sidecar</span>
-                <span className="sc-titleTagline">You might never open your editor again.</span>
-              </h1>
+          <div className="sc-heroHeader">
+            <h1 className="sc-title">
+              <img 
+                src={useBaseUrl('/img/sidecar-logo.png')} 
+                alt="Sidecar" 
+                className="sc-logo"
+              />
+              <span className="sc-titleTagline">You might never open your editor again.</span>
+            </h1>
 
-              <p className="sc-subtitle">
-                AI agents write your code. Sidecar keeps you in the terminal for everything else:
-                planning tasks with <a href="https://github.com/marcus/td" className="sc-inlineLink">td</a>, reviewing diffs, staging commits, managing worktrees. The whole development loop, one interface.
-              </p>
+            <p className="sc-subtitle">
+              Sidecar puts your entire development workflow in one shell:
+              plan tasks with <a href="https://github.com/marcus/td" className="sc-inlineLink">td</a>, chat with AI agents, review diffs, stage commits, review past conversations, and manage git workspaces—all without leaving Sidecar.
+            </p>
 
-              <div style={{ height: 32 }} />
-
+            <div className="sc-heroCta">
               <div className="sc-actions">
                 <Link className="sc-btn sc-btnPrimary" to="/docs/intro">
                   Get started <span className="sc-codeInline">curl | bash</span>
@@ -773,9 +817,11 @@ export default function Home() {
                 </a>
               </div>
 
-              <div style={{ height: 28 }} />
+              <div className="sc-heroNote">
+                <span className="sc-heroNoteHighlight">Free & Open Source</span> (MIT).
+              </div>
 
-              <div className="sc-codeBlock sc-installBlock" aria-label="Quick install snippet">
+              <div className="sc-codeBlock sc-installBlock sc-installHero" aria-label="Quick install snippet">
                 <div className="sc-installHeader">
                   <span className="sc-lineDim">Quick install</span>
                   <CopyButton text={INSTALL_COMMAND} />
@@ -790,19 +836,20 @@ export default function Home() {
                 </div>
               </div>
             </div>
-
-            <div>
-              <Frame activeTab={activeTab} onTabChange={handleTabChange} />
-            </div>
           </div>
         </div>
       </header>
+
+      <section className="sc-demoSection">
+        <div className="container">
+          <Frame activeTab={activeTab} onTabChange={handleTabChange} />
+        </div>
+      </section>
 
       <main className="sc-main">
         {/* Feature Cards */}
         <section className="sc-grid">
           <div className="container">
-            <p className="sc-gridHint">Click a card to see it in action above</p>
             <div className="sc-gridInner sc-gridFeatures">
               {/* TD Hero Card - double wide */}
               <FeatureCard
@@ -850,13 +897,13 @@ export default function Home() {
               </FeatureCard>
 
               <FeatureCard
-                id="worktrees"
-                title="Zero-command worktree workflow"
-                chip="worktrees"
-                isHighlighted={activeTab === 'worktrees'}
-                onClick={() => handleCardClick('worktrees')}
+                id="workspaces"
+                title="Zero-command workspace workflow"
+                chip="workspaces"
+                isHighlighted={activeTab === 'workspaces'}
+                onClick={() => handleCardClick('workspaces')}
               >
-                Create worktrees, pass tasks from td, kick off with configured prompts—no git commands needed. Everything is automatic.
+                Create workspaces, pass tasks from td, kick off with configured prompts—no git commands needed. Everything is automatic.
               </FeatureCard>
             </div>
           </div>
@@ -868,7 +915,6 @@ export default function Home() {
         <section className="sc-showcase">
           <div className="container">
             <h2 className="sc-showcaseTitle">The Plugins</h2>
-            <p className="sc-showcaseSubtitle">Each one built for AI-assisted development</p>
           </div>
 
           <div className="sc-showcaseFullWidth">
@@ -937,18 +983,18 @@ export default function Home() {
             />
 
             <ComponentSection
-              id="showcase-worktrees"
-              title="Zero-Command Worktree Workflow"
+              id="showcase-workspaces"
+              title="Zero-Command Workspace Workflow"
               gradient="sc-gradientYellow"
-              MockupComponent={WorktreesMockup}
+              MockupComponent={WorkspacesMockup}
               features={[
                 'No git commands needed--everything is automatic',
-                'Pass tasks directly from td to new worktrees',
+                'Pass tasks directly from td to new workspaces',
                 'Configure prompt sequences to kick off agents',
                 'Create, switch, merge, delete with single keys',
                 'PR status and CI checks at a glance',
                 'Auto-cleanup after merge',
-                'Linked task tracking across worktrees',
+                'Linked task tracking across workspaces',
               ]}
             />
           </div>
@@ -1000,7 +1046,7 @@ export default function Home() {
                 icon="git-branch"
                 title="Git Integration"
                 color="blue"
-                description="Deep integration with git: status, diff, staging, commits, branches, and worktrees."
+                description="Deep integration with git: status, diff, staging, commits, branches, and workspaces."
               />
               <FeatureListItem
                 icon="palette"
@@ -1032,6 +1078,75 @@ export default function Home() {
                 color="orange"
                 description="No dependencies to install. Download one binary and you're ready to go."
               />
+            </div>
+          </div>
+        </section>
+
+        {/* Even more features - smaller blocks */}
+        <section className="sc-moreFeatures">
+          <div className="container">
+            <h2 className="sc-featuresTitle" style={{ fontSize: '20px', marginBottom: '24px' }}>Even more features</h2>
+            <div className="sc-miniFeaturesGrid">
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-command" /></span>
+                <span>Command Palette</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-folder-kanban" /></span>
+                <span>Project Switcher</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-columns-2" /></span>
+                <span>Split Panes</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-activity" /></span>
+                <span>Diagnostics Overlay</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-search" /></span>
+                <span>Fuzzy File Finder</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-file-search" /></span>
+                <span>Ripgrep Search</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-git-branch" /></span>
+                <span>Git Graph</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-trello" /></span>
+                <span>Kanban Workspaces</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-link" /></span>
+                <span>Task Linking</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-external-link" /></span>
+                <span>External Editor</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-clipboard" /></span>
+                <span>System Clipboard</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-move" /></span>
+                <span>Vim Navigation</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-git-merge" /></span>
+                <span>Merge Workflow</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-refresh-cw" /></span>
+                <span>Global Refresh</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-sun" /></span>
+                <span>Theme Switching</span>
+              </div>
             </div>
           </div>
         </section>
