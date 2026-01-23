@@ -85,18 +85,25 @@ if !p.sidebarVisible {
 }
 ```
 
-**Background Resize Triggers** (`resizeSelectedPaneCmd()`):
+**Background Resize Triggers** (`resizeSelectedPaneCmd()` → `resizeTmuxTargetCmd()`):
 - `WindowSizeMsg` — terminal resized (both interactive and non-interactive)
-- Sidebar toggle (`\` key) — preview width changes
+- Sidebar toggle/drag (`\` key, mouse drag) — preview width changes
 - Selection change (`loadSelectedContent()`) — different pane needs sizing
 - Agent/shell creation (`AgentStartedMsg`/`ShellCreatedMsg`) — new pane at default size
 - Interactive mode entry — immediate resize with verification
 
-**Throttling**: Background resizes are throttled to max once per 500ms via `lastPreviewResizeAt`.
+**Attach/Detach Resize** (`resizeForAttachCmd()`):
+- Before `attach-session`: resize to full terminal (`p.width` x `p.height`) so no dot borders
+- After detach (`TmuxAttachFinishedMsg`/`ShellDetachedMsg`): resize back to preview dimensions
+
+**resize-window vs resize-pane**: Uses `resize-window` first (works for detached sessions),
+falls back to `resize-pane` for older tmux or edge cases. Pre-checks current size to skip
+no-op resizes.
 
 **Additional safety**:
 - Capture `pane_width` alongside cursor position and clamp rendering to it
 - If captured `pane_width/pane_height` mismatch the preview size, trigger a resize retry
+- Gated behind `tmux_interactive_input` feature flag
 
 ### 3. Polling and Performance
 

@@ -435,6 +435,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case ShellDetachedMsg:
 		// User detached from shell session - re-enable mouse and resume polling
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
+		// Resize pane back to preview dimensions
+		if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if shell := p.getSelectedShell(); shell != nil {
 			cmds = append(cmds, p.scheduleShellPollByName(shell.TmuxName, 0)) // Immediate poll
 		}
@@ -650,6 +654,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 		// Re-enable mouse after tea.ExecProcess (tmux attach disables it)
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
+
+		// Resize pane back to preview dimensions
+		if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
 		// Resume polling and refresh to capture what happened while attached
 		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {

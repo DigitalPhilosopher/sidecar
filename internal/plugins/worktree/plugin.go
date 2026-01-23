@@ -122,7 +122,6 @@ type Plugin struct {
 	autoScrollOutput   bool // Auto-scroll output to follow agent (paused when user scrolls up)
 	sidebarWidth       int       // Persisted sidebar width
 	sidebarVisible     bool      // Whether sidebar is visible (toggled with \)
-	lastPreviewResizeAt time.Time // Throttle background pane resizing
 	flashPreviewTime   time.Time // When preview flash was triggered
 	toastMessage       string    // Temporary toast message to display
 	toastTime          time.Time // When toast was triggered
