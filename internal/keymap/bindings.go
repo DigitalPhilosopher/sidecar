@@ -58,7 +58,7 @@ func DefaultBindings() []Binding {
 		{Key: "h", Command: "show-history", Context: "git-status"},
 		{Key: "P", Command: "push", Context: "git-status"},
 		{Key: "f", Command: "fetch", Context: "git-status"},
-		{Key: "l", Command: "pull", Context: "git-status"},
+		{Key: "L", Command: "pull", Context: "git-status"},
 		{Key: "b", Command: "branch", Context: "git-status"},
 		{Key: "z", Command: "stash", Context: "git-status"},
 		{Key: "Z", Command: "stash-pop", Context: "git-status"},

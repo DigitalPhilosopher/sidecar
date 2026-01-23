@@ -95,7 +95,7 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
-	case "right":
+	case "l", "right":
 		// Focus diff pane (when on a file) or commit preview pane (when on a commit)
 		if p.sidebarVisible {
 			if p.cursorOnCommit() && p.previewCommit != nil {
@@ -105,13 +105,9 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 
-	case "l":
-		// Open pull menu (when on files); focus diff pane (when on commits)
-		if p.cursorOnCommit() {
-			if p.sidebarVisible && p.previewCommit != nil {
-				p.activePane = PaneDiff
-			}
-		} else if p.canPull() && !p.pullInProgress {
+	case "L":
+		// Open pull menu
+		if p.canPull() && !p.pullInProgress {
 			p.pullMenuReturnMode = p.viewMode
 			p.viewMode = ViewModePullMenu
 			p.pullMenuFocus = 0
