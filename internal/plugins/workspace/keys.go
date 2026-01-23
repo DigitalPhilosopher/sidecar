@@ -133,11 +133,20 @@ func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
 	case "j", "down":
 		if p.typeSelectorFocus == 0 && p.typeSelectorIdx < 1 {
 			p.typeSelectorIdx++
+			// When switching from Shell to Worktree, blur name input if it was focused
+			if p.typeSelectorIdx == 1 {
+				p.typeSelectorNameInput.Blur()
+				p.typeSelectorFocus = 0
+			}
 		}
 		p.typeSelectorHover = -1
 	case "k", "up":
 		if p.typeSelectorFocus == 0 && p.typeSelectorIdx > 0 {
 			p.typeSelectorIdx--
+			// When switching from Worktree to Shell, reset focus to start at options
+			if p.typeSelectorIdx == 0 {
+				p.typeSelectorFocus = 0
+			}
 		}
 		p.typeSelectorHover = -1
 	case "enter":
