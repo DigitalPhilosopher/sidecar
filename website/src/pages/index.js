@@ -766,6 +766,10 @@ function WorkflowSection() {
   );
 }
 
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
+// ... (existing imports)
+
 export default function Home() {
   const { siteConfig } = useDocusaurusContext();
   const [activeTab, setActiveTab] = useState('td');
@@ -787,13 +791,17 @@ export default function Home() {
         <div className="container">
           <div className="sc-heroHeader">
             <h1 className="sc-title">
-              <span className="sc-titleBrand">Sidecar</span>
+              <img 
+                src={useBaseUrl('/img/sidecar-logo.png')} 
+                alt="Sidecar" 
+                className="sc-logo"
+              />
               <span className="sc-titleTagline">You might never open your editor again.</span>
             </h1>
 
             <p className="sc-subtitle">
-              AI agents write your code. Sidecar keeps you in the terminal for everything else:
-              planning tasks with <a href="https://github.com/marcus/td" className="sc-inlineLink">td</a>, reviewing diffs, staging commits, managing worktrees. The whole development loop, one interface.
+              Sidecar puts your entire development workflow in one shell:
+              plan tasks with <a href="https://github.com/marcus/td" className="sc-inlineLink">td</a>, chat with AI agents, review diffs, stage commits, review past conversations, and manage git worktrees—all without leaving Sidecar.
             </p>
 
             <div className="sc-heroCta">
@@ -807,6 +815,10 @@ export default function Home() {
                 <a className="sc-btn" href={siteConfig.customFields?.githubUrl || 'https://github.com/marcus/sidecar'}>
                   GitHub <span className="sc-codeInline"><i className="icon-external-link" /></span>
                 </a>
+              </div>
+
+              <div className="sc-heroNote">
+                <span className="sc-heroNoteHighlight">Free & Open Source</span> (MIT).
               </div>
 
               <div className="sc-codeBlock sc-installBlock sc-installHero" aria-label="Quick install snippet">
@@ -1068,6 +1080,75 @@ export default function Home() {
                 color="orange"
                 description="No dependencies to install. Download one binary and you're ready to go."
               />
+            </div>
+          </div>
+        </section>
+
+        {/* Even more features - smaller blocks */}
+        <section className="sc-moreFeatures">
+          <div className="container">
+            <h2 className="sc-featuresTitle" style={{ fontSize: '20px', marginBottom: '24px' }}>Even more features</h2>
+            <div className="sc-miniFeaturesGrid">
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-command" /></span>
+                <span>Command Palette</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-folder-kanban" /></span>
+                <span>Project Switcher</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-columns-2" /></span>
+                <span>Split Panes</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-activity" /></span>
+                <span>Diagnostics Overlay</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-search" /></span>
+                <span>Fuzzy File Finder</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-file-search" /></span>
+                <span>Ripgrep Search</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-git-branch" /></span>
+                <span>Git Graph</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-trello" /></span>
+                <span>Kanban Worktrees</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-link" /></span>
+                <span>Task Linking</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-external-link" /></span>
+                <span>External Editor</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-clipboard" /></span>
+                <span>System Clipboard</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-move" /></span>
+                <span>Vim Navigation</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-git-merge" /></span>
+                <span>Merge Workflow</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-refresh-cw" /></span>
+                <span>Global Refresh</span>
+              </div>
+              <div className="sc-miniFeature">
+                <span className="sc-miniFeatureIcon"><i className="icon-sun" /></span>
+                <span>Theme Switching</span>
+              </div>
             </div>
           </div>
         </section>

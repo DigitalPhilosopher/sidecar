@@ -10,7 +10,7 @@ You might never open your editor again.
 
 ## Overview
 
-AI agents write your code. Sidecar gives you the rest of the development workflow: plan tasks with [td](https://github.com/marcus/td), review diffs, stage commits, and manage git worktrees—all without opening an editor.
+Sidecar puts your entire development workflow in one shell: plan tasks with [td](https://github.com/marcus/td), chat with AI agents, review diffs, stage commits, review past conversations, and manage git worktrees—all without leaving Sidecar.
 
 ## Quick Install
 
@@ -159,9 +159,9 @@ Press `@` to switch between configured projects without restarting sidecar.
 {
   "projects": {
     "list": [
-      {"name": "sidecar", "path": "~/code/sidecar"},
-      {"name": "td", "path": "~/code/td"},
-      {"name": "my-app", "path": "~/projects/my-app"}
+      { "name": "sidecar", "path": "~/code/sidecar" },
+      { "name": "td", "path": "~/code/td" },
+      { "name": "my-app", "path": "~/projects/my-app" }
     ]
   }
 }
@@ -201,15 +201,15 @@ All plugins reinitialize with the new project context. State (active plugin, cur
 
 ### Worktree Shortcuts
 
-| Key   | Action                    |
-| ----- | ------------------------- |
-| `n`   | Create new worktree       |
-| `D`   | Delete worktree           |
-| `a`   | Launch/attach agent       |
-| `t`   | Link/unlink TD task       |
-| `m`   | Start merge workflow      |
-| `p`   | Push branch               |
-| `o`   | Open in finder/terminal   |
+| Key | Action                  |
+| --- | ----------------------- |
+| `n` | Create new worktree     |
+| `D` | Delete worktree         |
+| `a` | Launch/attach agent     |
+| `t` | Link/unlink TD task     |
+| `m` | Start merge workflow    |
+| `p` | Push branch             |
+| `o` | Open in finder/terminal |
 
 ## Configuration
 

@@ -114,7 +114,11 @@ const config = {
         respectPrefersColorScheme: false,
       },
       navbar: {
-        title: 'Sidecar',
+        title: '',
+        logo: {
+          alt: 'Sidecar Logo',
+          src: 'img/sidecar-logo.png',
+        },
         items: [
           {
             type: 'docSidebar',
