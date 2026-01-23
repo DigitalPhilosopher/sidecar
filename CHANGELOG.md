@@ -2,6 +2,15 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.42.0] - 2026-01-23
+
+### Improvements
+- Enhanced keyboard shortcut handling and bindings
+- Improved gitstatus plugin event handling
+
+### Dependencies
+- Updated embedded td to latest version
+
 ## [v0.41.0] - 2026-01-22
 
 ### Bug Fixes
