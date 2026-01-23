@@ -1,5 +1,5 @@
 /* External fonts - @import must be at top */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/npm/lucide-static@latest/font/lucide.css');
 
 /**
@@ -53,6 +53,8 @@ html[data-theme='dark'][data-custom-theme='molokai'] {
   --sc-purple: #ae81ff;
   --sc-yellow: #e6db74;
   --sc-orange: #fd971f;
+  --sc-tagline-start: #b6cdd6;
+  --sc-tagline-middle: #d0a3bf;
 
   /* TUI surfaces */
   --sc-panel: #171a1f;
@@ -84,6 +86,8 @@ html[data-theme='dark'][data-custom-theme='nord'] {
   --sc-purple: #B48EAD; /* Aurora Purple */
   --sc-yellow: #EBCB8B; /* Aurora Yellow */
   --sc-orange: #D08770; /* Aurora Orange */
+  --sc-tagline-start: #c1c8d5;
+  --sc-tagline-middle: #9fb8c9;
 
   --sc-panel: #2E3440;
   --sc-panel-2: #3B4252;
@@ -114,6 +118,8 @@ html[data-theme='dark'][data-custom-theme='solarized-dark'] {
   --sc-purple: #6C71C4; /* Violet */
   --sc-yellow: #B58900; /* Yellow */
   --sc-orange: #CB4B16; /* Orange */
+  --sc-tagline-start: #8a9898;
+  --sc-tagline-middle: #7aa6a0;
 
   --sc-panel: #002B36;
   --sc-panel-2: #073642;
@@ -144,6 +150,8 @@ html[data-theme='dark'][data-custom-theme='tokyo-night'] {
   --sc-purple: #BB9AF7;
   --sc-yellow: #E0AF68;
   --sc-orange: #FF9E64;
+  --sc-tagline-start: #aab4d8;
+  --sc-tagline-middle: #98aad8;
 
   --sc-panel: #1A1B26;
   --sc-panel-2: #24283B;
@@ -166,7 +174,7 @@ html[data-theme='dark'][data-custom-theme='tokyo-night'] {
 }
 
 .navbar__logo {
-  height: 24px;
+  height: 40px;
 }
 
 .navbar__title {
@@ -298,7 +306,6 @@ a:hover {
   width: 100%;
   max-width: 600px;
   text-align: left;
-  font-size: 13px;
 }
 
 .sc-demoSection {
@@ -329,16 +336,30 @@ a:hover {
 }
 
 .sc-logo {
-  max-width: 280px;
+  max-width: 520px;
   width: 100%;
   height: auto;
   margin: 40px 0 48px;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.35));
 }
 
 .sc-titleTagline {
   font-size: clamp(18px, 2.2vw, 24px);
-  color: var(--ifm-font-color-secondary);
-  letter-spacing: -0.3px;
+  font-family: "Fraunces", "Iowan Old Style", "Palatino", "Times New Roman", serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
+  line-height: 1.3;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  color: var(--sc-tagline-start, var(--ifm-font-color-secondary));
+  letter-spacing: -0.1px;
+  background: linear-gradient(90deg,
+    var(--sc-tagline-start, var(--ifm-color-primary)) 0%,
+    var(--sc-tagline-middle, var(--sc-purple)) 50%,
+    var(--sc-tagline-start, var(--ifm-color-primary)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .sc-subtitle {
@@ -377,26 +398,31 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border-radius: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--sc-border-2);
-  background: rgba(23, 26, 31, 0.8);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-  font-weight: 650;
-  letter-spacing: 0.2px;
+  border-radius: 16px;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.25)),
+    rgba(23, 26, 31, 0.72);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+  font-weight: 600;
+  letter-spacing: 0.1px;
   color: var(--ifm-font-color-base);
 }
 
 .sc-btnPrimary {
-  border-color: rgba(166, 226, 46, 0.35);
+  border-color: rgba(255, 255, 255, 0.18);
   background:
-    linear-gradient(180deg, rgba(166, 226, 46, 0.16), rgba(23, 26, 31, 0.86));
+    linear-gradient(180deg, rgba(230, 219, 116, 0.22), rgba(23, 26, 31, 0.86));
 }
 
 .sc-btn:hover {
   transform: translateY(-1px);
-  transition: transform 160ms ease, border-color 160ms ease;
-  border-color: rgba(255,255,255,0.18);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  border-color: rgba(255, 255, 255, 0.25);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.22)),
+    rgba(23, 26, 31, 0.78);
   text-decoration: none;
   color: var(--ifm-font-color-base);
 }
@@ -405,9 +431,9 @@ a:hover {
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 999px;
-  border: 1px solid var(--sc-border);
-  background: rgba(0,0,0,0.35);
-  color: var(--sc-yellow);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ifm-font-color-secondary);
 }
 
 /* ---------- TUI frame ---------- */
@@ -677,6 +703,8 @@ a:hover {
   font-size: 13px;
   margin: 0;
   letter-spacing: 0.2px;
+  font-family: var(--ifm-font-family-base);
+  font-weight: 600;
 }
 
 .sc-chip {
@@ -727,6 +755,7 @@ a:hover {
 
 .sc-installBlock {
   position: relative;
+  font-size: 14px;
 }
 
 .sc-installHeader {
@@ -833,6 +862,14 @@ a:hover {
   letter-spacing: -0.3px;
 }
 
+.sc-showcaseTitle,
+.sc-featuresTitle,
+.sc-agentsTitle,
+.sc-bottomCtaTitle {
+  font-family: "Fraunces", "Iowan Old Style", "Palatino", "Times New Roman", serif;
+  font-weight: 500;
+}
+
 .sc-showcaseSubtitle {
   font-size: 14px;
   color: var(--ifm-font-color-secondary);
@@ -925,6 +962,8 @@ a:hover {
   margin: 0 0 16px;
   color: var(--ifm-font-color-base);
   letter-spacing: 0.2px;
+  font-family: var(--ifm-font-family-base);
+  font-weight: 600;
 }
 
 .sc-componentFeatures {

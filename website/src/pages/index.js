@@ -850,7 +850,6 @@ export default function Home() {
         {/* Feature Cards */}
         <section className="sc-grid">
           <div className="container">
-            <p className="sc-gridHint">Click a card to see it in action above</p>
             <div className="sc-gridInner sc-gridFeatures">
               {/* TD Hero Card - double wide */}
               <FeatureCard
@@ -916,7 +915,6 @@ export default function Home() {
         <section className="sc-showcase">
           <div className="container">
             <h2 className="sc-showcaseTitle">The Plugins</h2>
-            <p className="sc-showcaseSubtitle">Each one built for AI-assisted development</p>
           </div>
 
           <div className="sc-showcaseFullWidth">
