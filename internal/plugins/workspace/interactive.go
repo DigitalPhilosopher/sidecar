@@ -298,6 +298,49 @@ func sendLiteralToTmux(sessionName, text string) error {
 	return cmd.Run()
 }
 
+// keySpec describes a key to send to tmux with ordering preserved.
+type keySpec struct {
+	value   string
+	literal bool
+}
+
+// sendInteractiveKeysCmd sends keys to tmux asynchronously (td-c2961e).
+// Keys are sent in order within a single goroutine to prevent reordering.
+// Returns InteractiveSessionDeadMsg if the session has ended.
+func sendInteractiveKeysCmd(sessionName string, keys ...keySpec) tea.Cmd {
+	return func() tea.Msg {
+		for _, k := range keys {
+			var err error
+			if k.literal {
+				err = sendLiteralToTmux(sessionName, k.value)
+			} else {
+				err = sendKeyToTmux(sessionName, k.value)
+			}
+			if err != nil && isSessionDeadError(err) {
+				return InteractiveSessionDeadMsg{}
+			}
+		}
+		return nil
+	}
+}
+
+// sendInteractivePasteInputCmd sends paste text to tmux asynchronously (td-c2961e).
+// Used for multi-character terminal input (not clipboard paste which is already async).
+func sendInteractivePasteInputCmd(sessionName, text string, bracketed bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if bracketed {
+			err = sendBracketedPasteToTmux(sessionName, text)
+		} else {
+			err = sendPasteToTmux(sessionName, text)
+		}
+		if err != nil && isSessionDeadError(err) {
+			return InteractiveSessionDeadMsg{}
+		}
+		return nil
+	}
+}
+
 // sendPasteToTmux pastes multi-line text via tmux buffer.
 // Uses load-buffer + paste-buffer which works regardless of app paste mode state.
 func sendPasteToTmux(sessionName, text string) error {
@@ -825,18 +868,12 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 
 	// Non-escape key: check if we have a pending Escape to forward first
 	var cmds []tea.Cmd
+	pendingEscape := false
 	if p.interactiveState.EscapePressed {
 		p.interactiveState.EscapePressed = false
 		// Timer leak prevention (td-83dc22): pending timer will be ignored when it fires
 		// since EscapePressed is now false (no need to cancel, it's harmless)
-		// Forward the pending Escape before this key
-		if err := sendKeyToTmux(p.interactiveState.TargetSession, "Escape"); err != nil {
-			p.exitInteractiveMode()
-			if isSessionDeadError(err) {
-				return func() tea.Msg { return InteractiveSessionDeadMsg{} }
-			}
-			return nil
-		}
+		pendingEscape = true
 	}
 
 	if msg.String() == p.getInteractiveCopyKey() {
@@ -867,19 +904,26 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// Check for paste (multi-character input with newlines or long text)
 	if isPasteInput(msg) {
 		text := string(msg.Runes)
-		var err error
-		// Use bracketed paste if app has it enabled (td-79ab6163)
-		if p.interactiveState.BracketedPasteEnabled {
-			err = sendBracketedPasteToTmux(sessionName, text)
+		bracketed := p.interactiveState.BracketedPasteEnabled
+		// Send paste async (td-c2961e): escape + paste in order if pending
+		if pendingEscape {
+			cmds = append(cmds, func() tea.Msg {
+				if err := sendKeyToTmux(sessionName, "Escape"); err != nil && isSessionDeadError(err) {
+					return InteractiveSessionDeadMsg{}
+				}
+				var err error
+				if bracketed {
+					err = sendBracketedPasteToTmux(sessionName, text)
+				} else {
+					err = sendPasteToTmux(sessionName, text)
+				}
+				if err != nil && isSessionDeadError(err) {
+					return InteractiveSessionDeadMsg{}
+				}
+				return nil
+			})
 		} else {
-			err = sendPasteToTmux(sessionName, text)
-		}
-		if err != nil {
-			p.exitInteractiveMode()
-			if isSessionDeadError(err) {
-				return func() tea.Msg { return InteractiveSessionDeadMsg{} }
-			}
-			return nil
+			cmds = append(cmds, sendInteractivePasteInputCmd(sessionName, text, bracketed))
 		}
 		cmds = append(cmds, p.pollInteractivePane())
 		return tea.Batch(cmds...)
@@ -888,23 +932,22 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// Map key to tmux format and send
 	key, useLiteral := MapKeyToTmux(msg)
 	if key == "" {
+		// Still send pending escape if nothing else to send
+		if pendingEscape {
+			cmds = append(cmds, sendInteractiveKeysCmd(sessionName, keySpec{"Escape", false}))
+			cmds = append(cmds, p.scheduleDebouncedPoll(keystrokeDebounce))
+		}
 		return tea.Batch(cmds...)
 	}
 
-	var err error
-	if useLiteral {
-		err = sendLiteralToTmux(sessionName, key)
+	// Send keys async (td-c2961e): pending escape + key in order within single goroutine
+	if pendingEscape {
+		cmds = append(cmds, sendInteractiveKeysCmd(sessionName,
+			keySpec{"Escape", false},
+			keySpec{key, useLiteral},
+		))
 	} else {
-		err = sendKeyToTmux(sessionName, key)
-	}
-
-	if err != nil {
-		// Session may have died - exit interactive mode
-		p.exitInteractiveMode()
-		if isSessionDeadError(err) {
-			return func() tea.Msg { return InteractiveSessionDeadMsg{} }
-		}
-		return nil
+		cmds = append(cmds, sendInteractiveKeysCmd(sessionName, keySpec{key, useLiteral}))
 	}
 
 	// Schedule debounced poll to batch rapid keystrokes (td-8a0978)
@@ -927,19 +970,15 @@ func (p *Plugin) handleEscapeTimer() tea.Cmd {
 		return nil
 	}
 
-	// Timer fired with pending Escape: forward the single Escape to tmux
+	// Timer fired with pending Escape: forward the single Escape to tmux async (td-c2961e)
 	p.interactiveState.EscapePressed = false
-	if err := sendKeyToTmux(p.interactiveState.TargetSession, "Escape"); err != nil {
-		p.exitInteractiveMode()
-		if isSessionDeadError(err) {
-			return func() tea.Msg { return InteractiveSessionDeadMsg{} }
-		}
-		return nil
-	}
 
 	// Update last key time and poll immediately for better responsiveness (td-babfd9)
 	p.interactiveState.LastKeyTime = time.Now()
-	return p.pollInteractivePaneImmediate()
+	return tea.Batch(
+		sendInteractiveKeysCmd(p.interactiveState.TargetSession, keySpec{"Escape", false}),
+		p.pollInteractivePaneImmediate(),
+	)
 }
 
 // forwardScrollToTmux scrolls through the captured pane output using previewOffset.
@@ -1093,11 +1132,12 @@ func (p *Plugin) pollInteractivePane() tea.Cmd {
 	}
 
 	// Use existing shell or worktree polling mechanism
+	// Worktrees use scheduleInteractivePoll to skip stagger (td-8856c9)
 	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
 		return p.scheduleShellPollByName(p.shells[p.selectedShellIdx].TmuxName, interval)
 	}
 	if wt := p.selectedWorktree(); wt != nil {
-		return p.scheduleAgentPoll(wt.Name, interval)
+		return p.scheduleInteractivePoll(wt.Name, interval)
 	}
 	return nil
 }
@@ -1112,7 +1152,7 @@ func (p *Plugin) scheduleDebouncedPoll(delay time.Duration) tea.Cmd {
 	// Use shell or worktree polling mechanism based on current selection.
 	// IMPORTANT: Use the correct generation map for each type (td-97327e):
 	// - Shells use shellPollGeneration (checked by scheduleShellPollByName)
-	// - Worktrees use pollGeneration (checked by scheduleAgentPoll)
+	// - Worktrees use pollGeneration (checked by scheduleInteractivePoll)
 	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
 		shellName := p.shells[p.selectedShellIdx].TmuxName
 		if shellName != "" {
@@ -1121,7 +1161,7 @@ func (p *Plugin) scheduleDebouncedPoll(delay time.Duration) tea.Cmd {
 		}
 	} else if wt := p.selectedWorktree(); wt != nil {
 		p.pollGeneration[wt.Name]++
-		return p.scheduleAgentPoll(wt.Name, delay)
+		return p.scheduleInteractivePoll(wt.Name, delay)
 	}
 
 	return nil
@@ -1135,13 +1175,12 @@ func (p *Plugin) pollInteractivePaneImmediate() tea.Cmd {
 		return nil
 	}
 
-	// Schedule with 0ms delay for immediate capture
-	// This reduces perceived latency when typing
+	// Schedule with 0ms delay for immediate capture (td-8856c9: no stagger for worktrees)
 	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
 		return p.scheduleShellPollByName(p.shells[p.selectedShellIdx].TmuxName, 0)
 	}
 	if wt := p.selectedWorktree(); wt != nil {
-		return p.scheduleAgentPoll(wt.Name, 0)
+		return p.scheduleInteractivePoll(wt.Name, 0)
 	}
 	return nil
 }

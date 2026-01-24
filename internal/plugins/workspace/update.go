@@ -374,10 +374,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				interval = pollIntervalVisibleUnfocused
 			}
 		}
-		cmds = append(cmds, p.scheduleAgentPoll(msg.WorkspaceName, interval))
-		// Use cursor position captured atomically with output (no separate query needed)
+		// Use interactive polling for the selected worktree (td-8856c9: no stagger)
 		if p.viewMode == ViewModeInteractive && !p.shellSelected {
 			if wt := p.selectedWorktree(); wt != nil && wt.Name == msg.WorkspaceName {
+				cmds = append(cmds, p.pollInteractivePane())
+				// Use cursor position captured atomically with output
 				if msg.HasCursor && p.interactiveState != nil && p.interactiveState.Active {
 					p.interactiveState.CursorRow = msg.CursorRow
 					p.interactiveState.CursorCol = msg.CursorCol
@@ -388,8 +389,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				if resizeCmd := p.maybeResizeInteractivePane(msg.PaneWidth, msg.PaneHeight); resizeCmd != nil {
 					cmds = append(cmds, resizeCmd)
 				}
+				return p, tea.Batch(cmds...)
 			}
 		}
+		cmds = append(cmds, p.scheduleAgentPoll(msg.WorkspaceName, interval))
 		return p, tea.Batch(cmds...)
 
 	// Shell session messages

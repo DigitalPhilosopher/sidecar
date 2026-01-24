@@ -723,6 +723,16 @@ func (p *Plugin) scheduleAgentPoll(worktreeName string, delay time.Duration) tea
 	})
 }
 
+// scheduleInteractivePoll schedules a poll without stagger for the active interactive session (td-8856c9).
+// Stagger exists to spread polls across multiple worktrees, but the selected interactive worktree
+// needs minimal latency. Uses the same generation tracking as scheduleAgentPoll.
+func (p *Plugin) scheduleInteractivePoll(worktreeName string, delay time.Duration) tea.Cmd {
+	gen := p.pollGeneration[worktreeName]
+	return tea.Tick(delay, func(t time.Time) tea.Msg {
+		return pollAgentMsg{WorkspaceName: worktreeName, Generation: gen}
+	})
+}
+
 // AgentPollUnchangedMsg signals content unchanged, schedule next poll.
 type AgentPollUnchangedMsg struct {
 	WorkspaceName  string
@@ -822,20 +832,22 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 			}
 		}
 
-		// Content changed - detect status and emit
-		status := detectStatus(output)
+		// Content changed - detect status (skip during interactive mode to reduce I/O, td-f29f2d)
+		status := currentStatus
 		waitingFor := ""
-		if status == StatusWaiting {
-			waitingFor = extractPrompt(output)
-		}
-
-		// For supported agents: supplement tmux detection with session file analysis
-		// Session files are more reliable for detecting "waiting at prompt" state
-		if status == StatusActive {
-			if sessionStatus, ok := detectAgentSessionStatus(agentType, wtPath); ok {
-				if sessionStatus == StatusWaiting {
-					status = StatusWaiting
-					waitingFor = "Waiting for input"
+		if !interactiveCapture {
+			status = detectStatus(output)
+			if status == StatusWaiting {
+				waitingFor = extractPrompt(output)
+			}
+			// For supported agents: supplement tmux detection with session file analysis
+			// Session files are more reliable for detecting "waiting at prompt" state
+			if status == StatusActive {
+				if sessionStatus, ok := detectAgentSessionStatus(agentType, wtPath); ok {
+					if sessionStatus == StatusWaiting {
+						status = StatusWaiting
+						waitingFor = "Waiting for input"
+					}
 				}
 			}
 		}
