@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -265,7 +266,7 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 }
 
 // Watch returns a channel that emits events when session data changes.
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
 	return NewWatcher(a.chatsDir(projectRoot))
 }
 

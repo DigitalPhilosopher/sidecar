@@ -1,6 +1,7 @@
 package warp
 
 import (
+	"io"
 	"path/filepath"
 	"sync"
 	"time"
@@ -11,25 +12,23 @@ import (
 
 // NewWatcher creates a watcher for Warp SQLite changes.
 // Watches the WAL file for modifications since Warp uses WAL mode.
-func NewWatcher(dbPath string) (<-chan adapter.Event, error) {
+func NewWatcher(dbPath string) (<-chan adapter.Event, io.Closer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Watch the directory containing the SQLite files
 	dbDir := filepath.Dir(dbPath)
 	if err := watcher.Add(dbDir); err != nil {
 		watcher.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	walFile := dbPath + "-wal"
 	events := make(chan adapter.Event, 32)
 
 	go func() {
-		defer watcher.Close()
-
 		var debounceTimer *time.Timer
 		debounceDelay := 100 * time.Millisecond
 
@@ -95,5 +94,5 @@ func NewWatcher(dbPath string) (<-chan adapter.Event, error) {
 		}
 	}()
 
-	return events, nil
+	return events, watcher, nil
 }

@@ -3,6 +3,7 @@ package opencode
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -274,13 +275,13 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 }
 
 // Watch returns a channel that emits events when session data changes.
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
 	projectID, err := a.findProjectID(projectRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if projectID == "" {
-		return nil, fmt.Errorf("no OpenCode project found for %s", projectRoot)
+		return nil, nil, fmt.Errorf("no OpenCode project found for %s", projectRoot)
 	}
 
 	sessionDir := filepath.Join(a.storageDir, "session", projectID)

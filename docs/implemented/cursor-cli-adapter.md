@@ -490,7 +490,7 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
     }, nil
 }
 
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
     wsHash := workspaceHash(projectRoot)
     wsDir := filepath.Join(a.chatsDir, wsHash)
     return NewWatcher(wsDir)

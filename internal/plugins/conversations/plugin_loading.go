@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -297,6 +298,7 @@ func (p *Plugin) startWatcher() tea.Cmd {
 
 		merged := make(chan adapter.Event, 32)
 		var wg sync.WaitGroup
+		var closers []io.Closer
 		watchCount := 0
 
 		// Watch all worktree paths with each adapter
@@ -315,10 +317,14 @@ func (p *Plugin) startWatcher() tea.Cmd {
 			}
 
 			for _, wtPath := range pathsToWatch {
-				ch, err := a.Watch(wtPath)
-				if err != nil || ch == nil {
+				ch, closer, err := a.Watch(wtPath)
+				if err != nil || ch == nil || closer == nil {
+					if closer != nil {
+						_ = closer.Close()
+					}
 					continue
 				}
+				closers = append(closers, closer)
 				watchCount++
 				wg.Add(1)
 				go func(c <-chan adapter.Event) {
@@ -334,7 +340,7 @@ func (p *Plugin) startWatcher() tea.Cmd {
 		}
 
 		if watchCount == 0 {
-			return WatchStartedMsg{Channel: nil}
+			return WatchStartedMsg{Channel: nil, Closers: closers}
 		}
 
 		// Close merged channel when all source channels are done
@@ -343,7 +349,7 @@ func (p *Plugin) startWatcher() tea.Cmd {
 			close(merged)
 		}()
 
-		return WatchStartedMsg{Channel: merged}
+		return WatchStartedMsg{Channel: merged, Closers: closers}
 	}
 }
 

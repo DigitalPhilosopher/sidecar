@@ -1,6 +1,7 @@
 package cursor
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,16 +14,16 @@ import (
 
 // NewWatcher creates a watcher for Cursor CLI session changes.
 // It watches the workspace directory for changes to store.db files.
-func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
+func NewWatcher(workspaceDir string) (<-chan adapter.Event, io.Closer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Watch the workspace directory and all session subdirectories
 	if err := watcher.Add(workspaceDir); err != nil {
 		watcher.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Add existing session directories
@@ -39,8 +40,6 @@ func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
 	events := make(chan adapter.Event, 32)
 
 	go func() {
-		defer watcher.Close()
-
 		// Debounce timer
 		var debounceTimer *time.Timer
 		debounceDelay := 100 * time.Millisecond
@@ -127,5 +126,5 @@ func NewWatcher(workspaceDir string) (<-chan adapter.Event, error) {
 		}
 	}()
 
-	return events, nil
+	return events, watcher, nil
 }

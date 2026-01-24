@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"io"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,22 +12,20 @@ import (
 )
 
 // NewWatcher creates a watcher for Claude Code session changes.
-func NewWatcher(projectDir string) (<-chan adapter.Event, error) {
+func NewWatcher(projectDir string) (<-chan adapter.Event, io.Closer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := watcher.Add(projectDir); err != nil {
 		watcher.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	events := make(chan adapter.Event, 32)
 
 	go func() {
-		defer watcher.Close()
-
 		// Debounce timer
 		var debounceTimer *time.Timer
 		var lastEvent fsnotify.Event
@@ -108,5 +107,5 @@ func NewWatcher(projectDir string) (<-chan adapter.Event, error) {
 		}
 	}()
 
-	return events, nil
+	return events, watcher, nil
 }

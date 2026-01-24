@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -406,7 +407,8 @@ func TestUpdateWatchStartedMsgNilChannel(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
 
-	msg := WatchStartedMsg{Channel: nil}
+	closed := 0
+	msg := WatchStartedMsg{Channel: nil, Closers: []io.Closer{&countCloser{count: &closed}}}
 	newPlugin, cmd := p.Update(msg)
 
 	if newPlugin == nil {
@@ -418,6 +420,9 @@ func TestUpdateWatchStartedMsgNilChannel(t *testing.T) {
 	if p.watchChan != nil {
 		t.Error("expected watchChan to remain nil")
 	}
+	if closed != 1 {
+		t.Errorf("expected closers to be closed, got %d", closed)
+	}
 }
 
 // Test WatchStartedMsg with valid channel
@@ -425,8 +430,12 @@ func TestUpdateWatchStartedMsgValidChannel(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
 
+	previousClosed := 0
+	p.watchClosers = []io.Closer{&countCloser{count: &previousClosed}}
+
+	newClosed := 0
 	ch := make(chan adapter.Event)
-	msg := WatchStartedMsg{Channel: ch}
+	msg := WatchStartedMsg{Channel: ch, Closers: []io.Closer{&countCloser{count: &newClosed}}}
 	newPlugin, cmd := p.Update(msg)
 
 	if newPlugin == nil {
@@ -437,6 +446,55 @@ func TestUpdateWatchStartedMsgValidChannel(t *testing.T) {
 	}
 	if p.watchChan != ch {
 		t.Error("expected watchChan to be set to the provided channel")
+	}
+	if previousClosed != 1 {
+		t.Errorf("expected previous closers to be closed, got %d", previousClosed)
+	}
+	if newClosed != 0 {
+		t.Errorf("expected new closers to remain open, got %d", newClosed)
+	}
+}
+
+func TestUpdateWatchStartedMsgStoppedCloses(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.stopped = true
+
+	closed := 0
+	ch := make(chan adapter.Event)
+	msg := WatchStartedMsg{Channel: ch, Closers: []io.Closer{&countCloser{count: &closed}}}
+	newPlugin, cmd := p.Update(msg)
+
+	if newPlugin == nil {
+		t.Fatal("expected non-nil plugin")
+	}
+	if cmd != nil {
+		t.Error("expected nil command when stopped")
+	}
+	if p.watchChan != nil {
+		t.Error("expected watchChan to remain nil when stopped")
+	}
+	if closed != 1 {
+		t.Errorf("expected closers to be closed when stopped, got %d", closed)
+	}
+}
+
+func TestStopClosesWatchers(t *testing.T) {
+	p := New()
+	closed := 0
+	p.watchClosers = []io.Closer{&countCloser{count: &closed}}
+	p.watchChan = make(chan adapter.Event)
+
+	p.Stop()
+
+	if !p.stopped {
+		t.Error("expected stopped to be true after Stop")
+	}
+	if closed != 1 {
+		t.Errorf("expected closers to be closed on Stop, got %d", closed)
+	}
+	if p.watchChan != nil {
+		t.Error("expected watchChan to be nil after Stop")
 	}
 }
 
@@ -578,7 +636,18 @@ func (m *mockAdapter) Capabilities() adapter.CapabilitySet                    { 
 func (m *mockAdapter) Sessions(projectRoot string) ([]adapter.Session, error) { return nil, nil }
 func (m *mockAdapter) Messages(sessionID string) ([]adapter.Message, error)   { return nil, nil }
 func (m *mockAdapter) Usage(sessionID string) (*adapter.UsageStats, error)    { return nil, nil }
-func (m *mockAdapter) Watch(projectRoot string) (<-chan adapter.Event, error) { return nil, nil }
+func (m *mockAdapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
+	return nil, nil, nil
+}
+
+type countCloser struct {
+	count *int
+}
+
+func (c *countCloser) Close() error {
+	*c.count++
+	return nil
+}
 
 // =============================================================================
 // Search Key Handling Tests via Update()

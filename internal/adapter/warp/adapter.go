@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/marcus/sidecar/internal/adapter"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // ansiRegex matches ANSI escape codes
@@ -142,14 +143,14 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	var sessions []adapter.Session
 	for rows.Next() {
 		var (
-			convID           string
-			workDir          string
-			modelID          sql.NullString
-			firstMsgStr      string
-			lastMsgStr       string
-			exchangeCount    int
-			firstInputJSON   sql.NullString
-			convDataJSON     string
+			convID         string
+			workDir        string
+			modelID        sql.NullString
+			firstMsgStr    string
+			lastMsgStr     string
+			exchangeCount  int
+			firstInputJSON sql.NullString
+			convDataJSON   string
 		)
 
 		if err := rows.Scan(&convID, &workDir, &modelID, &firstMsgStr, &lastMsgStr, &exchangeCount, &firstInputJSON, &convDataJSON); err != nil {
@@ -426,7 +427,7 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 }
 
 // Watch returns a channel that emits events when session data changes.
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
 	return NewWatcher(a.dbPath)
 }
 

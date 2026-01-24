@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -252,10 +253,10 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 }
 
 // Watch returns a channel that emits events when session data changes.
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
 	absPath, err := filepath.Abs(projectRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return NewWatcher(a.workspacePath(absPath))
 }
@@ -294,7 +295,6 @@ func (a *Adapter) readSessionMeta(dbPath string) (*SessionMeta, error) {
 
 	return &meta, nil
 }
-
 
 // findSessionDB finds the store.db path for a given session ID.
 func (a *Adapter) findSessionDB(sessionID string) string {

@@ -1,6 +1,7 @@
 package geminicli
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,22 +17,20 @@ import (
 var sessionIDPattern = regexp.MustCompile(`"sessionId"\s*:\s*"([^"]+)"`)
 
 // NewWatcher creates a watcher for Gemini CLI session changes.
-func NewWatcher(chatsDir string) (<-chan adapter.Event, error) {
+func NewWatcher(chatsDir string) (<-chan adapter.Event, io.Closer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := watcher.Add(chatsDir); err != nil {
 		watcher.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	events := make(chan adapter.Event, 32)
 
 	go func() {
-		defer watcher.Close()
-
 		// Debounce timer
 		var debounceTimer *time.Timer
 		var lastEvent fsnotify.Event
@@ -115,7 +114,7 @@ func NewWatcher(chatsDir string) (<-chan adapter.Event, error) {
 		}
 	}()
 
-	return events, nil
+	return events, watcher, nil
 }
 
 // extractSessionID reads the session file and extracts the sessionId field.

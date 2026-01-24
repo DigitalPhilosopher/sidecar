@@ -1,6 +1,9 @@
 package adapter
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 // Adapter provides access to AI session data from various sources.
 type Adapter interface {
@@ -12,7 +15,7 @@ type Adapter interface {
 	Sessions(projectRoot string) ([]Session, error)
 	Messages(sessionID string) ([]Message, error)
 	Usage(sessionID string) (*UsageStats, error)
-	Watch(projectRoot string) (<-chan Event, error)
+	Watch(projectRoot string) (<-chan Event, io.Closer, error)
 }
 
 // ProjectDiscoverer is an optional interface for adapters that can discover

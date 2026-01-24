@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,16 +14,16 @@ import (
 
 // NewWatcher creates a watcher for Codex session changes.
 // Only watches recent month directories to reduce resource usage (td-ae05cd6a).
-func NewWatcher(root string) (<-chan adapter.Event, error) {
+func NewWatcher(root string) (<-chan adapter.Event, io.Closer, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Watch root for new year/month directories
 	if err := watcher.Add(root); err != nil {
 		watcher.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Watch only recent month directories (td-ae05cd6a)
@@ -34,8 +35,6 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 	events := make(chan adapter.Event, 32)
 
 	go func() {
-		defer watcher.Close()
-
 		var debounceTimer *time.Timer
 		var lastEvent fsnotify.Event
 		debounceDelay := 200 * time.Millisecond // Increased from 100ms (td-11c31ccd)
@@ -119,7 +118,7 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 		}
 	}()
 
-	return events, nil
+	return events, watcher, nil
 }
 
 // recentSessionDirs returns directories for current and previous months (td-ae05cd6a).

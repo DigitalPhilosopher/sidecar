@@ -18,7 +18,7 @@ type Adapter interface {
 	Sessions(projectRoot string) ([]Session, error)
 	Messages(sessionID string) ([]Message, error)
 	Usage(sessionID string) (*UsageStats, error)
-	Watch(projectRoot string) (<-chan Event, error)
+	Watch(projectRoot string) (<-chan Event, io.Closer, error)
 }
 ```
 
@@ -521,5 +521,5 @@ func (a *Adapter) Capabilities() adapter.CapabilitySet { /* ... */ }
 func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) { /* ... */ }
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) { /* ... */ }
 func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) { /* ... */ }
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) { /* ... */ }
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) { /* ... */ }
 ```

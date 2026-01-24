@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -409,7 +410,7 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 }
 
 // Watch returns a channel that emits events when session data changes.
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, error) {
+func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
 	return NewWatcher(a.projectDirPath(projectRoot))
 }
 
@@ -705,8 +706,8 @@ type sessionMetaCacheEntry struct {
 	modTime     time.Time
 	size        int64
 	lastAccess  time.Time
-	byteOffset  int64                    // position after last parsed line (for incremental)
-	modelCounts map[string]int           // per-model message counts
+	byteOffset  int64                      // position after last parsed line (for incremental)
+	modelCounts map[string]int             // per-model message counts
 	modelTokens map[string]modelTokenEntry // per-model token accumulation
 }
 

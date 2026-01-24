@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"sync"
 	"time"
@@ -124,10 +125,10 @@ type Plugin struct {
 	analyticsLines     []string // pre-rendered lines for scrolling
 
 	// Layout state
-	activePane     FocusPane // Which pane is focused
-	sidebarRestore FocusPane // Tracks pane focused before collapse; restored on expand via toggleSidebar()
-	sidebarWidth   int       // Calculated width (~30%)
-	sidebarVisible bool      // Toggle sidebar visibility with \
+	activePane         FocusPane // Which pane is focused
+	sidebarRestore     FocusPane // Tracks pane focused before collapse; restored on expand via toggleSidebar()
+	sidebarWidth       int       // Calculated width (~30%)
+	sidebarVisible     bool      // Toggle sidebar visibility with \
 	previewToken       int       // monotonically increasing token for debounced preview loads
 	messageReloadToken int       // monotonically increasing token for debounced watch reloads
 
@@ -136,7 +137,9 @@ type Plugin struct {
 	height int
 
 	// Watcher channel
-	watchChan <-chan adapter.Event
+	watchChan    <-chan adapter.Event
+	watchClosers []io.Closer
+	stopped      bool
 
 	// Event coalescing for watch events
 	coalescer    *EventCoalescer
@@ -184,9 +187,9 @@ type Plugin struct {
 	pendingRefresh bool // true when refresh was skipped due to unfocused state
 
 	// Worktree cache to avoid git commands on every refresh (td-e74a4aaa)
-	cachedWorktreePaths []string            // cached GetAllRelatedPaths result
-	cachedWorktreeNames map[string]string   // cached wtPath -> name mapping
-	worktreeCacheTime   time.Time           // when the cache was last updated
+	cachedWorktreePaths []string          // cached GetAllRelatedPaths result
+	cachedWorktreeNames map[string]string // cached wtPath -> name mapping
+	worktreeCacheTime   time.Time         // when the cache was last updated
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -271,6 +274,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 // Start begins plugin operation.
 func (p *Plugin) Start() tea.Cmd {
+	p.stopped = false
 	if len(p.adapters) == 0 {
 		return nil
 	}
@@ -284,11 +288,20 @@ func (p *Plugin) Start() tea.Cmd {
 
 // Stop cleans up plugin resources.
 func (p *Plugin) Stop() {
+	p.stopped = true
 	// Stop event coalescer
 	if p.coalescer != nil {
 		p.coalescer.Stop()
 	}
-	// Watcher cleanup handled by adapter
+	p.closeWatchers()
+	p.watchChan = nil
+}
+
+func (p *Plugin) closeWatchers() {
+	for _, closer := range p.watchClosers {
+		_ = closer.Close()
+	}
+	p.watchClosers = nil
 }
 
 // Update handles messages.
@@ -467,8 +480,19 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case WatchStartedMsg:
 		// Watcher started, store channel and start listening
 		if msg.Channel == nil {
+			for _, closer := range msg.Closers {
+				_ = closer.Close()
+			}
 			return p, nil // Watcher failed
 		}
+		if p.stopped {
+			for _, closer := range msg.Closers {
+				_ = closer.Close()
+			}
+			return p, nil
+		}
+		p.closeWatchers()
+		p.watchClosers = msg.Closers
 		p.watchChan = msg.Channel
 		return p, p.listenForWatchEvents()
 
@@ -735,6 +759,7 @@ type WatchEventMsg struct {
 }
 type WatchStartedMsg struct {
 	Channel <-chan adapter.Event
+	Closers []io.Closer
 }
 type ErrorMsg struct{ Err error }
 
