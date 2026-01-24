@@ -21,6 +21,11 @@ func Convert(scheme *CommunityScheme) styles.ColorPalette {
 		bgTertiary = adjustBg(bg, 0.16, isDark)
 	}
 
+	// Compute muted text colors with contrast enforcement
+	textMuted := EnsureContrast(scheme.BrightBlack, bg, 3.0)
+	textSubtle := EnsureContrast(Blend(scheme.BrightBlack, bg, 0.30), bg, 2.5)
+	tabTextInactive := EnsureContrast(scheme.BrightBlack, bg, 3.0)
+
 	return styles.ColorPalette{
 		Primary:   scheme.Blue,
 		Secondary: scheme.Cyan,
@@ -33,8 +38,8 @@ func Convert(scheme *CommunityScheme) styles.ColorPalette {
 
 		TextPrimary:   fg,
 		TextSecondary: Blend(fg, bg, 0.25),
-		TextMuted:     scheme.BrightBlack,
-		TextSubtle:    Blend(scheme.BrightBlack, bg, 0.30),
+		TextMuted:     textMuted,
+		TextSubtle:    textSubtle,
 		TextHighlight: scheme.BrightWhite,
 
 		BgPrimary:   bg,
@@ -59,7 +64,7 @@ func Convert(scheme *CommunityScheme) styles.ColorPalette {
 		DiffRemoveBg: Blend(bg, scheme.Red, 0.15),
 
 		ButtonHover:      scheme.Purple,
-		TabTextInactive:  scheme.BrightBlack,
+		TabTextInactive:  tabTextInactive,
 		Link:             scheme.BrightBlue,
 		ToastSuccessText: contrastText(scheme.Green),
 		ToastErrorText:   contrastText(scheme.Red),

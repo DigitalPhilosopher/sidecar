@@ -193,3 +193,38 @@ func clampByte(v float64) uint8 {
 	}
 	return uint8(math.Round(v))
 }
+
+// ContrastRatio returns the WCAG 2.0 contrast ratio between two colors (1 to 21).
+func ContrastRatio(fg, bg string) float64 {
+	l1 := Luminance(fg)
+	l2 := Luminance(bg)
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+// EnsureContrast adjusts fg toward the foreground pole (white for dark bg, black for light bg)
+// until the contrast ratio against bg meets minRatio. Returns the original fg if already sufficient.
+func EnsureContrast(fg, bg string, minRatio float64) string {
+	if ContrastRatio(fg, bg) >= minRatio {
+		return fg
+	}
+	isDark := Luminance(bg) < 0.5
+	target := "#ffffff"
+	if !isDark {
+		target = "#000000"
+	}
+	// Binary search for the minimum blend needed
+	lo, hi := 0.0, 1.0
+	for i := 0; i < 16; i++ {
+		mid := (lo + hi) / 2
+		candidate := Blend(fg, target, mid)
+		if ContrastRatio(candidate, bg) >= minRatio {
+			hi = mid
+		} else {
+			lo = mid
+		}
+	}
+	return Blend(fg, target, hi)
+}

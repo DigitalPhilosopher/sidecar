@@ -270,6 +270,35 @@ func TestPaletteToOverridesZeroGradientAngle(t *testing.T) {
 	}
 }
 
+func TestAllSchemesMinimumContrast(t *testing.T) {
+	schemes := ListSchemes()
+	if len(schemes) == 0 {
+		t.Fatal("no schemes loaded")
+	}
+
+	for _, name := range schemes {
+		scheme := GetScheme(name)
+		if scheme == nil {
+			continue
+		}
+		palette := Convert(scheme)
+		bg := palette.BgPrimary
+
+		// TextMuted must have at least 3:1 contrast against background
+		if ratio := ContrastRatio(palette.TextMuted, bg); ratio < 3.0 {
+			t.Errorf("%s: TextMuted contrast %.2f < 3.0 (fg=%s, bg=%s)", name, ratio, palette.TextMuted, bg)
+		}
+		// TextSubtle must have at least 2.5:1
+		if ratio := ContrastRatio(palette.TextSubtle, bg); ratio < 2.5 {
+			t.Errorf("%s: TextSubtle contrast %.2f < 2.5 (fg=%s, bg=%s)", name, ratio, palette.TextSubtle, bg)
+		}
+		// TabTextInactive must have at least 3:1
+		if ratio := ContrastRatio(palette.TabTextInactive, bg); ratio < 3.0 {
+			t.Errorf("%s: TabTextInactive contrast %.2f < 3.0 (fg=%s, bg=%s)", name, ratio, palette.TabTextInactive, bg)
+		}
+	}
+}
+
 func isValidHex(s string) bool {
 	if len(s) < 7 || s[0] != '#' {
 		return false
