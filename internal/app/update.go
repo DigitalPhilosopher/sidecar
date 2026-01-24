@@ -83,6 +83,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.handleProjectSwitcherMouse(msg)
 		case ModalThemeSwitcher:
+			if m.showCommunityBrowser {
+				return m.handleCommunityBrowserMouse(msg)
+			}
 			return m.handleThemeSwitcherMouse(msg)
 		}
 
@@ -1528,4 +1531,125 @@ func (m *Model) previewCommunityScheme() {
 			styles.ApplyThemeColors(styles.Theme{Colors: palette})
 		}
 	}
+}
+
+// handleCommunityBrowserMouse handles mouse events for the community browser modal.
+func (m Model) handleCommunityBrowserMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	schemes := m.communityBrowserFiltered
+	maxVisible := 8
+	visibleCount := len(schemes)
+	if visibleCount > maxVisible {
+		visibleCount = maxVisible
+	}
+
+	// Modal dimensions matching view rendering
+	modalContentLines := 2 + 1 + 1 + visibleCount + 2
+	if m.communityBrowserScroll > 0 {
+		modalContentLines++
+	}
+	if len(schemes) > m.communityBrowserScroll+visibleCount {
+		modalContentLines++
+	}
+	if len(schemes) == 0 {
+		modalContentLines = 2 + 1 + 1 + 2 + 2
+	}
+
+	modalHeight := modalContentLines + 4
+	modalWidth := 50
+	modalX := (m.width - modalWidth) / 2
+	modalY := (m.height - modalHeight) / 2
+
+	// Inside modal
+	if msg.X >= modalX && msg.X < modalX+modalWidth &&
+		msg.Y >= modalY && msg.Y < modalY+modalHeight {
+
+		if len(schemes) == 0 {
+			return m, nil
+		}
+
+		// Calculate scheme list start Y
+		contentStartY := modalY + 2 + 2 + 1 + 1
+		if m.communityBrowserScroll > 0 {
+			contentStartY++
+		}
+
+		relY := msg.Y - contentStartY
+		if relY >= 0 && relY < visibleCount {
+			schemeIdx := m.communityBrowserScroll + relY
+			if schemeIdx >= 0 && schemeIdx < len(schemes) {
+				switch msg.Action {
+				case tea.MouseActionPress:
+					if msg.Button == tea.MouseButtonLeft {
+						selectedName := schemes[schemeIdx]
+						scheme := community.GetScheme(selectedName)
+						if scheme != nil {
+							palette := community.Convert(scheme)
+							styles.ApplyThemeColors(styles.Theme{Colors: palette})
+							overrides := community.PaletteToOverrides(palette)
+							m.resetCommunityBrowser()
+							m.resetThemeSwitcher()
+							m.updateContext()
+							if err := config.SaveThemeWithOverrides("default", overrides); err != nil {
+								return m, func() tea.Msg {
+									return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
+								}
+							}
+							return m, func() tea.Msg {
+								return ToastMsg{Message: "Theme: " + selectedName + " (community)", Duration: 2 * time.Second}
+							}
+						}
+					}
+				case tea.MouseActionMotion:
+					m.communityBrowserHover = schemeIdx
+					scheme := community.GetScheme(schemes[schemeIdx])
+					if scheme != nil {
+						palette := community.Convert(scheme)
+						styles.ApplyThemeColors(styles.Theme{Colors: palette})
+					}
+				}
+			}
+		} else {
+			if msg.Action == tea.MouseActionMotion {
+				m.communityBrowserHover = -1
+			}
+		}
+
+		// Scroll wheel
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.communityBrowserCursor--
+			if m.communityBrowserCursor < 0 {
+				m.communityBrowserCursor = 0
+			}
+			m.communityBrowserScroll = themeSwitcherEnsureCursorVisible(m.communityBrowserCursor, m.communityBrowserScroll, maxVisible)
+			m.previewCommunityScheme()
+		case tea.MouseButtonWheelDown:
+			m.communityBrowserCursor++
+			if m.communityBrowserCursor >= len(schemes) {
+				m.communityBrowserCursor = len(schemes) - 1
+			}
+			if m.communityBrowserCursor < 0 {
+				m.communityBrowserCursor = 0
+			}
+			m.communityBrowserScroll = themeSwitcherEnsureCursorVisible(m.communityBrowserCursor, m.communityBrowserScroll, maxVisible)
+			m.previewCommunityScheme()
+		}
+
+		return m, nil
+	}
+
+	// Click outside modal - cancel
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		m.applyThemeFromConfig(m.communityBrowserOriginal)
+		m.resetCommunityBrowser()
+		m.resetThemeSwitcher()
+		m.updateContext()
+		return m, nil
+	}
+
+	if msg.Action == tea.MouseActionMotion {
+		m.communityBrowserHover = -1
+	}
+
+	return m, nil
 }

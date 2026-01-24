@@ -717,7 +717,7 @@ func (m *Model) initCommunityBrowser() {
 	m.communityBrowserCursor = 0
 	m.communityBrowserScroll = 0
 	m.communityBrowserHover = -1
-	m.communityBrowserOriginal = styles.GetCurrentThemeName()
+	m.communityBrowserOriginal = m.themeSwitcherOriginal
 	m.showCommunityBrowser = true
 }
 

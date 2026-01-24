@@ -3,6 +3,7 @@ package community
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -18,7 +19,7 @@ var SchemeMap map[string]*CommunityScheme
 func init() {
 	var schemes []CommunityScheme
 	if err := json.Unmarshal(schemesData, &schemes); err != nil {
-		return
+		panic(fmt.Sprintf("community: failed to parse embedded schemes.json: %v", err))
 	}
 
 	SchemeMap = make(map[string]*CommunityScheme, len(schemes))
