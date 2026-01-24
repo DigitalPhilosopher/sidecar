@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/marcus/sidecar/internal/styles"
 )
@@ -39,7 +40,7 @@ func Convert(scheme *CommunityScheme) styles.ColorPalette {
 		BgPrimary:   bg,
 		BgSecondary: bgSecondary,
 		BgTertiary:  bgTertiary,
-		BgOverlay:   bg + "80",
+		BgOverlay:   WithAlpha(bg, "80"),
 
 		BorderNormal: scheme.BrightBlack,
 		BorderActive: scheme.Blue,
@@ -57,9 +58,9 @@ func Convert(scheme *CommunityScheme) styles.ColorPalette {
 		DiffRemoveFg: scheme.Red,
 		DiffRemoveBg: Blend(bg, scheme.Red, 0.15),
 
-		ButtonHover:     scheme.Purple,
-		TabTextInactive: scheme.BrightBlack,
-		Link:            scheme.BrightBlue,
+		ButtonHover:      scheme.Purple,
+		TabTextInactive:  scheme.BrightBlack,
+		Link:             scheme.BrightBlue,
 		ToastSuccessText: contrastText(scheme.Green),
 		ToastErrorText:   contrastText(scheme.Red),
 
@@ -118,9 +119,7 @@ func PaletteToOverrides(p styles.ColorPalette) map[string]interface{} {
 		}
 		m["gradientBorderNormal"] = arr
 	}
-	if p.GradientBorderAngle != 0 {
-		m["gradientBorderAngle"] = p.GradientBorderAngle
-	}
+	m["gradientBorderAngle"] = p.GradientBorderAngle
 	if len(p.TabColors) > 0 {
 		arr := make([]interface{}, len(p.TabColors))
 		for i, c := range p.TabColors {
@@ -172,10 +171,7 @@ func deriveTabGradient(scheme *CommunityScheme) []string {
 
 	// Filter to saturated colors
 	var saturated []colorInfo
-	for _, c := range candidates {
-		if c == "" {
-			continue
-		}
+	for _, c := range filterCandidateColors(candidates) {
 		s := Saturation(c)
 		if s > 0.3 {
 			saturated = append(saturated, colorInfo{c, s, HueDegrees(c)})
@@ -183,8 +179,12 @@ func deriveTabGradient(scheme *CommunityScheme) []string {
 	}
 
 	if len(saturated) < 3 {
-		// Fallback: use primary colors directly
-		return []string{scheme.Blue, scheme.Purple, scheme.Cyan}
+		fallback := greedyDistancePick(filterCandidateColors(candidates), 4)
+		fallback = ensureFallbackTabColors(fallback, scheme.Background)
+		sort.Slice(fallback, func(i, j int) bool {
+			return HueDegrees(fallback[i]) < HueDegrees(fallback[j])
+		})
+		return fallback
 	}
 
 	// Sort by saturation descending, take top 6
@@ -203,6 +203,92 @@ func deriveTabGradient(scheme *CommunityScheme) []string {
 		return HueDegrees(picked[i]) < HueDegrees(picked[j])
 	})
 
+	return picked
+}
+
+func filterCandidateColors(candidates []string) []string {
+	filtered := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		if c == "" || !styles.IsValidHexColor(c) {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	return filtered
+}
+
+func greedyDistancePick(candidates []string, n int) []string {
+	if len(candidates) <= n {
+		result := make([]string, len(candidates))
+		copy(result, candidates)
+		return result
+	}
+
+	picked := []string{candidates[0]}
+	used := map[int]bool{0: true}
+
+	for len(picked) < n {
+		bestIdx := -1
+		bestMinDist := -1.0
+
+		for i, c := range candidates {
+			if used[i] {
+				continue
+			}
+			minDist := math.MaxFloat64
+			for _, p := range picked {
+				dist := ColorDistance(c, p)
+				if dist < minDist {
+					minDist = dist
+				}
+			}
+			if minDist > bestMinDist {
+				bestMinDist = minDist
+				bestIdx = i
+			}
+		}
+
+		if bestIdx < 0 {
+			break
+		}
+		picked = append(picked, candidates[bestIdx])
+		used[bestIdx] = true
+	}
+
+	return picked
+}
+
+func ensureFallbackTabColors(picked []string, background string) []string {
+	seen := make(map[string]bool, len(picked))
+	for _, c := range picked {
+		seen[strings.ToLower(c)] = true
+	}
+
+	addUnique := func(color string) {
+		if color == "" {
+			return
+		}
+		key := strings.ToLower(color)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		picked = append(picked, color)
+	}
+
+	if len(picked) >= 3 {
+		return picked
+	}
+
+	isDark := Luminance(background) < 0.5
+	addUnique(adjustBg(background, 0.12, isDark))
+	addUnique(adjustBg(background, 0.20, isDark))
+	addUnique(adjustBg(background, 0.28, isDark))
+	addUnique(background)
+
+	if len(picked) > 4 {
+		return picked[:4]
+	}
 	return picked
 }
 
@@ -264,17 +350,17 @@ func hueDist(a, b float64) float64 {
 
 // Known Chroma theme backgrounds for matching.
 var chromaThemes = map[string]string{
-	"monokai":        "#272822",
-	"dracula":        "#282a36",
-	"nord":           "#2e3440",
-	"solarized-dark": "#002b36",
-	"github":         "#ffffff",
-	"github-dark":    "#24292e",
-	"onedark":        "#282c34",
-	"gruvbox":        "#282828",
+	"monokai":          "#272822",
+	"dracula":          "#282a36",
+	"nord":             "#2e3440",
+	"solarized-dark":   "#002b36",
+	"github":           "#ffffff",
+	"github-dark":      "#24292e",
+	"onedark":          "#282c34",
+	"gruvbox":          "#282828",
 	"catppuccin-mocha": "#1e1e2e",
-	"vs":             "#ffffff",
-	"solarized-light": "#fdf6e3",
+	"vs":               "#ffffff",
+	"solarized-light":  "#fdf6e3",
 }
 
 // matchSyntaxTheme finds the closest Chroma theme by background color.

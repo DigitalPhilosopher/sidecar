@@ -3,6 +3,8 @@ package community
 import (
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 func TestConvertCatppuccinMocha(t *testing.T) {
@@ -186,6 +188,85 @@ func TestDeriveTabGradient(t *testing.T) {
 		if HueDegrees(result[i]) < HueDegrees(result[i-1]) {
 			t.Errorf("tab gradient not sorted by hue at index %d", i)
 		}
+	}
+}
+
+func TestDeriveTabGradientDesaturatedFallback(t *testing.T) {
+	scheme := &CommunityScheme{
+		Red: "#666666", Green: "#707070", Yellow: "#7a7a7a",
+		Blue: "#848484", Purple: "#8e8e8e", Cyan: "#989898",
+		BrightRed: "#a2a2a2", BrightGreen: "#acacac", BrightYellow: "#b6b6b6",
+		BrightBlue: "#c0c0c0", BrightPurple: "#cacaca", BrightCyan: "#d4d4d4",
+		Background: "#1a1a1a",
+	}
+	result := deriveTabGradient(scheme)
+	if len(result) < 3 || len(result) > 4 {
+		t.Errorf("deriveTabGradient returned %d colors, want 3-4", len(result))
+	}
+
+	unique := make(map[string]bool)
+	for i, c := range result {
+		if !isValidHex(c) {
+			t.Errorf("TabColors[%d] = %q, not valid hex", i, c)
+		}
+		unique[strings.ToLower(c)] = true
+	}
+	if len(unique) < 3 {
+		t.Errorf("deriveTabGradient returned %d unique colors, want >= 3", len(unique))
+	}
+}
+
+func TestConvertSelectionBackgroundFallback(t *testing.T) {
+	base := GetScheme("Catppuccin Mocha")
+	if base == nil {
+		t.Skip("Catppuccin Mocha not found")
+	}
+	scheme := *base
+	scheme.SelectionBackground = base.Background
+
+	palette := Convert(&scheme)
+	if palette.BgTertiary == scheme.Background {
+		t.Errorf("BgTertiary = %s, want fallback distinct from background", palette.BgTertiary)
+	}
+}
+
+func TestConvertSelectionBackgroundEmpty(t *testing.T) {
+	base := GetScheme("Catppuccin Mocha")
+	if base == nil {
+		t.Skip("Catppuccin Mocha not found")
+	}
+	scheme := *base
+	scheme.SelectionBackground = ""
+
+	palette := Convert(&scheme)
+	if palette.BgTertiary == scheme.Background {
+		t.Errorf("BgTertiary = %s, want fallback distinct from background", palette.BgTertiary)
+	}
+}
+
+func TestConvertBgOverlayHandlesAlpha(t *testing.T) {
+	base := GetScheme("Catppuccin Mocha")
+	if base == nil {
+		t.Skip("Catppuccin Mocha not found")
+	}
+	scheme := *base
+	scheme.Background = "#112233aa"
+
+	palette := Convert(&scheme)
+	if palette.BgOverlay != "#11223380" {
+		t.Errorf("BgOverlay = %s, want #11223380", palette.BgOverlay)
+	}
+}
+
+func TestPaletteToOverridesZeroGradientAngle(t *testing.T) {
+	palette := styles.ColorPalette{
+		GradientBorderActive: []string{"#111111", "#222222"},
+		GradientBorderAngle:  0,
+	}
+	overrides := PaletteToOverrides(palette)
+
+	if v, ok := overrides["gradientBorderAngle"].(float64); !ok || v != 0 {
+		t.Errorf("gradientBorderAngle = %v, want 0", overrides["gradientBorderAngle"])
 	}
 }
 

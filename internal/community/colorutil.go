@@ -3,9 +3,12 @@ package community
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/marcus/sidecar/internal/styles"
 )
+
+const achromaticEpsilon = 1e-6
 
 // HexToHSL converts a hex color (#RRGGBB) to HSL (h: 0-360, s: 0-1, l: 0-1).
 func HexToHSL(hex string) (h, s, l float64) {
@@ -18,7 +21,7 @@ func HexToHSL(hex string) (h, s, l float64) {
 	min := math.Min(r, math.Min(g, b))
 	l = (max + min) / 2.0
 
-	if max == min {
+	if math.Abs(max-min) < achromaticEpsilon {
 		return 0, 0, l
 	}
 
@@ -107,8 +110,9 @@ func linearize(v float64) float64 {
 	return math.Pow((v+0.055)/1.055, 2.4)
 }
 
-// Blend mixes two hex colors: result = (1-t)*c1 + t*c2.
+// Blend mixes two hex colors: result = (1-t)*c1 + t*c2. t is clamped to [0,1].
 func Blend(c1, c2 string, t float64) string {
+	t = math.Max(0, math.Min(1, t))
 	rgb1 := styles.HexToRGB(c1)
 	rgb2 := styles.HexToRGB(c2)
 	return styles.RGBToHex(styles.RGB{
@@ -158,6 +162,16 @@ func ColorDistance(a, b string) float64 {
 func FormatHex(hex string) string {
 	rgb := styles.HexToRGB(hex)
 	return fmt.Sprintf("#%02x%02x%02x", clampByte(rgb.R), clampByte(rgb.G), clampByte(rgb.B))
+}
+
+// WithAlpha returns a lowercase #rrggbbaa color, normalizing the base hex if needed.
+func WithAlpha(hex, alpha string) string {
+	trimmed := strings.TrimPrefix(hex, "#")
+	if len(trimmed) >= 6 {
+		return "#" + strings.ToLower(trimmed[:6]) + strings.ToLower(strings.TrimPrefix(alpha, "#"))
+	}
+	base := FormatHex(hex)
+	return base + strings.ToLower(strings.TrimPrefix(alpha, "#"))
 }
 
 func clamp(v, min, max float64) float64 {
