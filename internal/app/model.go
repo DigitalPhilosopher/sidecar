@@ -28,13 +28,14 @@ import (
 type ModalKind int
 
 const (
-	ModalNone            ModalKind = iota // No modal open
-	ModalPalette                          // Command palette (highest priority)
-	ModalHelp                             // Help overlay
-	ModalDiagnostics                      // Diagnostics/version info
-	ModalQuitConfirm                      // Quit confirmation dialog
-	ModalProjectSwitcher                  // Project switcher
-	ModalThemeSwitcher                    // Theme switcher (lowest priority)
+	ModalNone             ModalKind = iota // No modal open
+	ModalPalette                           // Command palette (highest priority)
+	ModalHelp                              // Help overlay
+	ModalDiagnostics                       // Diagnostics/version info
+	ModalQuitConfirm                       // Quit confirmation dialog
+	ModalProjectSwitcher                   // Project switcher
+	ModalWorktreeSwitcher                  // Worktree switcher
+	ModalThemeSwitcher                     // Theme switcher (lowest priority)
 )
 
 // activeModal returns the highest-priority open modal.
@@ -51,6 +52,8 @@ func (m *Model) activeModal() ModalKind {
 		return ModalQuitConfirm
 	case m.showProjectSwitcher:
 		return ModalProjectSwitcher
+	case m.showWorktreeSwitcher:
+		return ModalWorktreeSwitcher
 	case m.showThemeSwitcher:
 		return ModalThemeSwitcher
 	default:
@@ -128,6 +131,19 @@ type Model struct {
 	projectAddCommunityList   []string // filtered community scheme names
 	projectAddCommunityCursor int
 	projectAddCommunityScroll int
+
+	// Worktree switcher modal
+	showWorktreeSwitcher         bool
+	worktreeSwitcherCursor       int
+	worktreeSwitcherScroll       int
+	worktreeSwitcherInput        textinput.Model
+	worktreeSwitcherFiltered     []WorktreeInfo
+	worktreeSwitcherAll          []WorktreeInfo
+	worktreeSwitcherModal        *modal.Modal
+	worktreeSwitcherModalWidth   int
+	worktreeSwitcherMouseHandler *mouse.Handler
+	activeWorktreePath           string // Currently active worktree path (empty = main repo)
+	worktreeCheckCounter         int    // Counter for periodic worktree existence check
 
 	// Theme switcher modal
 	showThemeSwitcher          bool
