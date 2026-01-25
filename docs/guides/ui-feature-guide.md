@@ -1,7 +1,7 @@
 # UI Feature Implementation Guide
 
 This is the single entry point for Sidecar UI feature work: modals, keyboard shortcuts, and mouse support.
-All new modals must use the internal modal library. The modal spec is authoritative: `docs/spec-modal-library.md`.
+All new modals must use the internal modal library. See `docs/guides/declarative-modal-guide.md` for the full API reference.
 
 ## Quick checklist
 - Modals: use `internal/modal`, render with `ui.OverlayModal`, avoid manual hit region math.
@@ -14,7 +14,7 @@ All new modals must use the internal modal library. The modal spec is authoritat
 
 ### Requirements
 - All new modals must be built with `internal/modal`.
-- Follow `docs/spec-modal-library.md` for the full API and layout rules.
+- See `docs/guides/declarative-modal-guide.md` for the full API and patterns.
 - Do not implement custom hit region math or manual button focus logic.
 
 ### Create a modal
