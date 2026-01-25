@@ -20,6 +20,7 @@ type EventCoalescer struct {
 	timer          *time.Timer
 	coalesceWindow time.Duration
 	msgChan        chan<- CoalescedRefreshMsg // channel to send messages
+	closed         bool                       // true after Stop() called, prevents send on closed channel
 }
 
 // NewEventCoalescer creates a coalescer with the given window duration.
@@ -58,6 +59,12 @@ func (c *EventCoalescer) Add(sessionID string) {
 // Called by timer when coalesce window closes.
 func (c *EventCoalescer) flush() {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if stopped (channel may be closed)
+	if c.closed {
+		return
+	}
 
 	// Collect pending IDs
 	sessionIDs := make([]string, 0, len(c.pendingIDs))
@@ -72,9 +79,7 @@ func (c *EventCoalescer) flush() {
 	c.refreshAll = false
 	c.timer = nil
 
-	c.mu.Unlock()
-
-	// Send message outside lock
+	// Send message with lock held - safe because select/default prevents blocking
 	if c.msgChan != nil {
 		select {
 		case c.msgChan <- CoalescedRefreshMsg{
@@ -91,6 +96,8 @@ func (c *EventCoalescer) flush() {
 func (c *EventCoalescer) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.closed = true // Prevent flush() from sending on closed channel
 
 	if c.timer != nil {
 		c.timer.Stop()

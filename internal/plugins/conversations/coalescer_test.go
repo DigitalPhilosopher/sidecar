@@ -180,3 +180,37 @@ func TestEventCoalescer_TimerReset(t *testing.T) {
 		t.Errorf("expected 2 session IDs, got %d", len(received.SessionIDs))
 	}
 }
+
+func TestEventCoalescer_StopWithClosedChannel(t *testing.T) {
+	// Regression test: Stop() then close channel should not panic
+	// This simulates the project switch scenario where plugin.Stop() is called
+	ch := make(chan CoalescedRefreshMsg, 1)
+	c := NewEventCoalescer(50*time.Millisecond, ch)
+
+	c.Add("session-1")
+
+	// Stop and close channel (simulates plugin shutdown)
+	c.Stop()
+	close(ch)
+
+	// Wait longer than coalesce window - should not panic
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestEventCoalescer_StopRaceCondition(t *testing.T) {
+	// Stress test: rapidly add events and stop to trigger race conditions
+	for i := 0; i < 100; i++ {
+		ch := make(chan CoalescedRefreshMsg, 1)
+		c := NewEventCoalescer(1*time.Millisecond, ch)
+
+		// Add event
+		c.Add("session-1")
+
+		// Stop and close immediately (race with timer)
+		c.Stop()
+		close(ch)
+
+		// Small sleep to let any pending timers fire
+		time.Sleep(5 * time.Millisecond)
+	}
+}
