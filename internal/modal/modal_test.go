@@ -71,8 +71,8 @@ func TestSpacerSection(t *testing.T) {
 	s := Spacer()
 	res := s.Render(80, "", "")
 
-	if res.Content != "" {
-		t.Errorf("expected empty content, got %q", res.Content)
+	if res.Content != " " {
+		t.Errorf("expected spacer content to be a single space, got %q", res.Content)
 	}
 }
 
@@ -147,6 +147,57 @@ func TestWhenSection(t *testing.T) {
 	res = s.Render(80, "", "")
 	if !strings.Contains(res.Content, "Conditional") {
 		t.Errorf("expected 'Conditional' when condition is true, got %q", res.Content)
+	}
+}
+
+func TestWhenSectionNoSpacerLine(t *testing.T) {
+	m := New("Test", WithHints(false)).
+		AddSection(Custom(func(contentWidth int, focusID, hoverID string) RenderedSection {
+			return RenderedSection{
+				Content: "First",
+				Focusables: []FocusableInfo{{
+					ID:      "first",
+					OffsetX: 0,
+					OffsetY: 0,
+					Width:   5,
+					Height:  1,
+				}},
+			}
+		}, nil)).
+		AddSection(When(func() bool { return false }, Text("Hidden"))).
+		AddSection(Custom(func(contentWidth int, focusID, hoverID string) RenderedSection {
+			return RenderedSection{
+				Content: "Second",
+				Focusables: []FocusableInfo{{
+					ID:      "second",
+					OffsetX: 0,
+					OffsetY: 0,
+					Width:   6,
+					Height:  1,
+				}},
+			}
+		}, nil))
+
+	handler := mouse.NewHandler()
+	m.Render(80, 24, handler)
+
+	regions := handler.HitMap.Regions()
+	var first, second *mouse.Region
+	for i := range regions {
+		switch regions[i].ID {
+		case "first":
+			first = &regions[i]
+		case "second":
+			second = &regions[i]
+		}
+	}
+
+	if first == nil || second == nil {
+		t.Fatalf("expected both 'first' and 'second' regions to be registered")
+	}
+
+	if second.Rect.Y-first.Rect.Y != 1 {
+		t.Errorf("expected no spacer line between sections; got delta %d", second.Rect.Y-first.Rect.Y)
 	}
 }
 
@@ -479,7 +530,7 @@ func TestSliceLines(t *testing.T) {
 	}{
 		{0, 2, "line 0\nline 1"},
 		{1, 2, "line 1\nline 2"},
-		{3, 3, "line 3\nline 4\n"}, // Padded with empty
+		{3, 3, "line 3\nline 4\n"},                                  // Padded with empty
 		{0, 10, "line 0\nline 1\nline 2\nline 3\nline 4\n\n\n\n\n"}, // Padded
 	}
 

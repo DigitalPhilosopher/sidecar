@@ -18,14 +18,24 @@ type renderedSection struct {
 // buildLayout renders all sections, measures heights, and registers hit regions.
 func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string {
 	// Clamp modal width
-	modalWidth := clamp(m.width, MinModalWidth, screenW-4)
+	maxWidth := screenW - 4
+	if maxWidth < 1 {
+		maxWidth = 1
+	}
+	minWidth := MinModalWidth
+	if maxWidth < minWidth {
+		minWidth = maxWidth
+	}
+	modalWidth := clamp(m.width, minWidth, maxWidth)
 	contentWidth := modalWidth - ModalPadding // border(2) + padding(4)
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
 
 	// 1. Render sections individually, measure heights, collect focusables
+	focusID := m.currentFocusID()
 	rendered := make([]renderedSection, 0, len(m.sections))
 	m.focusIDs = m.focusIDs[:0] // Reset focusable IDs
-
-	focusID := m.currentFocusID()
 
 	for _, s := range m.sections {
 		res := s.Render(contentWidth, focusID, m.hoverID)
@@ -48,28 +58,25 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 		m.focusIdx = 0
 	}
 
+	// Filter out zero-height sections (e.g., inactive When)
+	visible := make([]renderedSection, 0, len(rendered))
+	for _, r := range rendered {
+		if r.content != "" || r.height > 0 {
+			visible = append(visible, r)
+		}
+	}
+
 	// 2. Join full content with newlines between non-empty sections
 	var parts []string
-	for _, r := range rendered {
-		if r.content != "" || r.height == 0 {
-			// Include empty sections (spacers) and non-empty sections
-			parts = append(parts, r.content)
-		}
+	for _, r := range visible {
+		parts = append(parts, r.content)
 	}
 	fullContent := strings.Join(parts, "\n")
 
 	// 3. Compute scroll viewport
 	totalContentHeight := 0
-	for _, r := range rendered {
-		if r.height > 0 {
-			totalContentHeight += r.height
-		} else {
-			totalContentHeight += 1 // Spacers count as 1 line
-		}
-	}
-	// Add newlines between sections
-	if len(parts) > 1 {
-		totalContentHeight += len(parts) - 1
+	for _, r := range visible {
+		totalContentHeight += r.height
 	}
 
 	modalInnerHeight := desiredModalInnerHeight(screenH)
@@ -116,18 +123,15 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 		handler.HitMap.AddRect("modal-body", modalX, modalY, modalWidth, modalH, nil)
 
 		// Calculate content area position
-		contentX := modalX + 3  // border(1) + padding(2)
-		contentY := modalY + 2  // border(1) + padding(1)
+		contentX := modalX + 3 // border(1) + padding(2)
+		contentY := modalY + 2 // border(1) + padding(1)
 		if m.title != "" {
 			contentY += headerLines
 		}
 
 		// Register focusable elements with measured positions
 		sectionStartY := 0
-		for i, r := range rendered {
-			if i > 0 {
-				sectionStartY++ // Account for newline between sections
-			}
+		for _, r := range visible {
 
 			for _, f := range r.focusables {
 				// Calculate absolute position
@@ -139,12 +143,7 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 					handler.HitMap.AddRect(f.ID, absX, absY, f.Width, f.Height, f.ID)
 				}
 			}
-
-			if r.height > 0 {
-				sectionStartY += r.height
-			} else {
-				sectionStartY++ // Spacer = 1 line
-			}
+			sectionStartY += r.height
 		}
 	}
 
@@ -202,8 +201,8 @@ func hintLines(show bool) int {
 func desiredModalInnerHeight(screenH int) int {
 	// Leave room for modal border and some margin
 	maxH := screenH - 6
-	if maxH < 10 {
-		maxH = 10
+	if maxH < 1 {
+		maxH = 1
 	}
 	return maxH
 }
@@ -252,4 +251,3 @@ func clamp(v, minVal, maxVal int) int {
 	}
 	return v
 }
-

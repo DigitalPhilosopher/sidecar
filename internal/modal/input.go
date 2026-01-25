@@ -79,8 +79,17 @@ func (s *inputSection) Render(contentWidth int, focusID, hoverID string) Rendere
 	}
 
 	// Update model width and focus state
+	inputInnerWidth := contentWidth - 4
+	if inputInnerWidth < 1 {
+		inputInnerWidth = 1
+	}
+	inputBoxWidth := contentWidth - 2
+	if inputBoxWidth < 1 {
+		inputBoxWidth = 1
+	}
+
 	if s.model != nil {
-		s.model.Width = contentWidth - 4 // Account for input padding/border
+		s.model.Width = inputInnerWidth // Account for input padding/border
 		if isFocused {
 			s.model.Focus()
 		} else {
@@ -94,17 +103,17 @@ func (s *inputSection) Render(contentWidth int, focusID, hoverID string) Rendere
 		inputStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.Primary).
-			Width(contentWidth - 2)
+			Width(inputBoxWidth)
 	} else if s.id == hoverID {
 		inputStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.TextMuted).
-			Width(contentWidth - 2)
+			Width(inputBoxWidth)
 	} else {
 		inputStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.BorderNormal).
-			Width(contentWidth - 2)
+			Width(inputBoxWidth)
 	}
 
 	// Render input
@@ -112,10 +121,11 @@ func (s *inputSection) Render(contentWidth int, focusID, hoverID string) Rendere
 	if s.model != nil {
 		inputView = s.model.View()
 	}
-	sb.WriteString(inputStyle.Render(inputView))
+	renderedInput := inputStyle.Render(inputView)
+	sb.WriteString(renderedInput)
 
 	content := sb.String()
-	inputHeight := 2 // Bordered input takes 2 lines (top border + content, bottom border)
+	inputHeight := lipgloss.Height(renderedInput)
 
 	return RenderedSection{
 		Content: content,
@@ -211,8 +221,17 @@ func (s *textareaSection) Render(contentWidth int, focusID, hoverID string) Rend
 	}
 
 	// Update model dimensions and focus state
+	textareaInnerWidth := contentWidth - 4
+	if textareaInnerWidth < 1 {
+		textareaInnerWidth = 1
+	}
+	textareaBoxWidth := contentWidth - 2
+	if textareaBoxWidth < 1 {
+		textareaBoxWidth = 1
+	}
+
 	if s.model != nil {
-		s.model.SetWidth(contentWidth - 4)
+		s.model.SetWidth(textareaInnerWidth)
 		s.model.SetHeight(s.height)
 		if isFocused {
 			s.model.Focus()
@@ -227,17 +246,17 @@ func (s *textareaSection) Render(contentWidth int, focusID, hoverID string) Rend
 		areaStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.Primary).
-			Width(contentWidth - 2)
+			Width(textareaBoxWidth)
 	} else if s.id == hoverID {
 		areaStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.TextMuted).
-			Width(contentWidth - 2)
+			Width(textareaBoxWidth)
 	} else {
 		areaStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(styles.BorderNormal).
-			Width(contentWidth - 2)
+			Width(textareaBoxWidth)
 	}
 
 	// Render textarea

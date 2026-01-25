@@ -70,7 +70,8 @@ func Spacer() Section {
 }
 
 func (s *spacerSection) Render(contentWidth int, focusID, hoverID string) RenderedSection {
-	return RenderedSection{Content: ""}
+	// Use a single space so measureHeight reports a 1-line spacer.
+	return RenderedSection{Content: " "}
 }
 
 func (s *spacerSection) Update(msg tea.Msg, focusID string) (string, tea.Cmd) {
