@@ -305,6 +305,7 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.branchReturnMode = p.viewMode
 		p.branchCursor = 0
 		p.viewMode = ViewModeBranchPicker
+		p.clearBranchPickerModal()
 		return p, p.loadBranches()
 
 	case "f":

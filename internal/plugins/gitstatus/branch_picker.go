@@ -2,34 +2,55 @@ package gitstatus
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
 
+const (
+	branchPickerItemPrefix = "branch-picker-item-"
+)
+
+func branchPickerItemID(idx int) string {
+	return fmt.Sprintf("%s%d", branchPickerItemPrefix, idx)
+}
+
+func parseBranchPickerItem(id string) (int, bool) {
+	if !strings.HasPrefix(id, branchPickerItemPrefix) {
+		return 0, false
+	}
+	idx, err := strconv.Atoi(strings.TrimPrefix(id, branchPickerItemPrefix))
+	if err != nil {
+		return 0, false
+	}
+	return idx, true
+}
+
 // updateBranchPicker handles key events in the branch picker modal.
 func (p *Plugin) updateBranchPicker(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	p.ensureBranchPickerModal()
+	if p.branchPickerModal == nil {
+		return p, nil
+	}
+
 	switch msg.String() {
 	case "esc", "q":
 		// Close picker
-		p.viewMode = p.branchReturnMode
-		p.branches = nil
+		p.closeBranchPicker()
 		return p, nil
 
 	case "j", "down":
-		if len(p.branches) > 0 && p.branchCursor < len(p.branches)-1 {
-			p.branchCursor++
-		}
+		p.moveBranchCursor(1)
 		return p, nil
 
 	case "k", "up":
-		if p.branchCursor > 0 {
-			p.branchCursor--
-		}
+		p.moveBranchCursor(-1)
 		return p, nil
 
 	case "g":
@@ -44,16 +65,19 @@ func (p *Plugin) updateBranchPicker(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "enter":
 		// Switch to selected branch
-		if len(p.branches) > 0 && p.branchCursor < len(p.branches) {
-			branch := p.branches[p.branchCursor]
-			if !branch.IsCurrent {
-				return p, p.doSwitchBranch(branch.Name)
-			}
-		}
-		return p, nil
+		return p, p.switchSelectedBranch()
 	}
 
-	return p, nil
+	action, cmd := p.branchPickerModal.HandleKey(msg)
+	if action == "cancel" {
+		p.closeBranchPicker()
+		return p, nil
+	}
+	if idx, ok := parseBranchPickerItem(action); ok {
+		return p, p.switchBranchByIndex(idx)
+	}
+
+	return p, cmd
 }
 
 // doSwitchBranch switches to a different branch.
@@ -80,48 +104,47 @@ func (p *Plugin) loadBranches() tea.Cmd {
 	}
 }
 
-// renderBranchPicker renders the branch picker modal.
-func (p *Plugin) renderBranchPicker() string {
-	// Render the background (status view dimmed)
-	background := p.renderThreePaneView()
+// ensureBranchPickerModal builds/rebuilds the branch picker modal.
+func (p *Plugin) ensureBranchPickerModal() {
+	modalW := p.branchPickerWidthForContent()
+	if p.branchPickerModal != nil && p.branchPickerWidth == modalW {
+		return
+	}
+	p.branchPickerWidth = modalW
 
-	// Clear previous hit regions for branch items
-	p.mouseHandler.HitMap.Clear()
+	p.branchPickerModal = modal.New("Branches",
+		modal.WithWidth(modalW),
+		modal.WithHints(false),
+	).
+		AddSection(p.branchPickerListSection()).
+		AddSection(modal.Spacer()).
+		AddSection(p.branchPickerHintsSection())
+}
 
-	var sb strings.Builder
-
-	// Title
-	title := styles.Title.Render(" Branches ")
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-
-	// Calculate modal width first (needed for hit regions)
-	modalWidth := 50
+func (p *Plugin) branchPickerWidthForContent() int {
+	modalW := 50
 	for _, b := range p.branches {
-		lineLen := len(b.Name) + 10
-		if lineLen > modalWidth {
-			modalWidth = lineLen
+		lineLen := len(b.Name) + len(b.FormatTrackingInfo()) + len(b.Upstream) + 10
+		if lineLen > modalW {
+			modalW = lineLen
 		}
 	}
-	if modalWidth > p.width-10 {
-		modalWidth = p.width - 10
+	if modalW > p.width-10 {
+		modalW = p.width - 10
 	}
+	if modalW < 20 {
+		modalW = 20
+	}
+	return modalW
+}
 
-	// Track visible branches for hit regions
-	var visibleStart, visibleEnd int
-
-	if len(p.branches) == 0 {
-		sb.WriteString(styles.Muted.Render("  Loading branches..."))
-	} else {
-		// Calculate visible range (max 15 branches visible)
-		maxVisible := 15
-		if p.height-10 < maxVisible {
-			maxVisible = p.height - 10
-		}
-		if maxVisible < 5 {
-			maxVisible = 5
+func (p *Plugin) branchPickerListSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		if len(p.branches) == 0 {
+			return modal.RenderedSection{Content: styles.Muted.Render("  Loading branches...")}
 		}
 
+		maxVisible := p.branchPickerMaxVisible()
 		start := 0
 		if p.branchCursor >= maxVisible {
 			start = p.branchCursor - maxVisible + 1
@@ -130,60 +153,136 @@ func (p *Plugin) renderBranchPicker() string {
 		if end > len(p.branches) {
 			end = len(p.branches)
 		}
-		visibleStart = start
-		visibleEnd = end
+
+		var sb strings.Builder
+		focusables := make([]modal.FocusableInfo, 0, end-start)
 
 		for i := start; i < end; i++ {
 			branch := p.branches[i]
+			itemID := branchPickerItemID(i)
 			selected := i == p.branchCursor
-			hovered := i == p.branchPickerHover
+			hovered := itemID == hoverID
 
 			line := p.renderBranchLine(branch, selected, hovered)
-			sb.WriteString(line)
-			if i < end-1 {
+			if i > start {
 				sb.WriteString("\n")
 			}
+			sb.WriteString(line)
+
+			focusables = append(focusables, modal.FocusableInfo{
+				ID:      itemID,
+				OffsetX: 0,
+				OffsetY: i - start,
+				Width:   ansi.StringWidth(line),
+				Height:  1,
+			})
 		}
 
-		// Scroll indicator
+		content := sb.String()
 		if len(p.branches) > maxVisible {
-			sb.WriteString("\n\n")
-			sb.WriteString(styles.Muted.Render(fmt.Sprintf("  %d/%d branches", p.branchCursor+1, len(p.branches))))
+			content += "\n\n" + styles.Muted.Render(fmt.Sprintf("  %d/%d branches", p.branchCursor+1, len(p.branches)))
+		}
+
+		return modal.RenderedSection{
+			Content:    content,
+			Focusables: focusables,
+		}
+	}, p.branchPickerListUpdate)
+}
+
+func (p *Plugin) branchPickerListUpdate(msg tea.Msg, focusID string) (string, tea.Cmd) {
+	if _, ok := parseBranchPickerItem(focusID); !ok {
+		return "", nil
+	}
+
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return "", nil
+	}
+
+	switch keyMsg.String() {
+	case "up", "k":
+		p.moveBranchCursor(-1)
+	case "down", "j":
+		p.moveBranchCursor(1)
+	case "enter":
+		if len(p.branches) > 0 && p.branchCursor >= 0 && p.branchCursor < len(p.branches) {
+			return branchPickerItemID(p.branchCursor), nil
 		}
 	}
 
-	sb.WriteString("\n\n")
-	sb.WriteString(styles.Muted.Render("  Enter to switch, j/k to navigate, Esc to cancel"))
+	return "", nil
+}
 
-	modalContent := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Primary).
-		Padding(1, 2).
-		Width(modalWidth).
-		Render(sb.String())
+func (p *Plugin) branchPickerHintsSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		return modal.RenderedSection{Content: styles.Muted.Render("  Enter to switch, j/k to navigate, Esc to cancel")}
+	}, nil)
+}
 
-	// Register hit regions for visible branches
-	// Modal adds: border(1) + padding(1) on each side vertically = 4 total height added
-	// Title + blank line = 2 lines before branches
-	// Modal position is centered
-	actualModalWidth := modalWidth + 6 // border(1) + padding(2) on each side
-	modalHeight := 4 + 2 + (visibleEnd - visibleStart) + 4 // approx: borders + title + branches + footer
-	startX := (p.width - actualModalWidth) / 2
-	startY := (p.height - modalHeight) / 2
-	if startX < 0 {
-		startX = 0
+func (p *Plugin) branchPickerMaxVisible() int {
+	maxVisible := 15
+	if p.height-10 < maxVisible {
+		maxVisible = p.height - 10
 	}
-	if startY < 0 {
-		startY = 0
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+	return maxVisible
+}
+
+func (p *Plugin) moveBranchCursor(delta int) {
+	if len(p.branches) == 0 {
+		return
+	}
+	newCursor := p.branchCursor + delta
+	if newCursor < 0 {
+		newCursor = 0
+	}
+	if newCursor >= len(p.branches) {
+		newCursor = len(p.branches) - 1
+	}
+	p.branchCursor = newCursor
+}
+
+func (p *Plugin) switchSelectedBranch() tea.Cmd {
+	return p.switchBranchByIndex(p.branchCursor)
+}
+
+func (p *Plugin) switchBranchByIndex(idx int) tea.Cmd {
+	if idx < 0 || idx >= len(p.branches) {
+		return nil
+	}
+	p.branchCursor = idx
+	branch := p.branches[idx]
+	if branch.IsCurrent {
+		return nil
+	}
+	return p.doSwitchBranch(branch.Name)
+}
+
+func (p *Plugin) closeBranchPicker() {
+	p.viewMode = p.branchReturnMode
+	p.branches = nil
+	p.clearBranchPickerModal()
+}
+
+func (p *Plugin) clearBranchPickerModal() {
+	p.branchPickerModal = nil
+	p.branchPickerWidth = 0
+}
+
+// renderBranchPicker renders the branch picker modal.
+func (p *Plugin) renderBranchPicker() string {
+	// Render the background (status view dimmed)
+	background := p.renderThreePaneView()
+
+	p.ensureBranchPickerModal()
+	if p.branchPickerModal == nil {
+		return background
 	}
 
-	// Branch items start at: startY + border(1) + padding(1) + title(1) + blank(1) = startY + 4
-	branchStartY := startY + 4
-	for i := visibleStart; i < visibleEnd; i++ {
-		lineY := branchStartY + (i - visibleStart)
-		p.mouseHandler.HitMap.AddRect(regionBranchItem, startX, lineY, actualModalWidth, 1, i)
-	}
-
+	modalContent := p.branchPickerModal.Render(p.width, p.height, p.mouseHandler)
 	return ui.OverlayModal(background, modalContent, p.width, p.height)
 }
 

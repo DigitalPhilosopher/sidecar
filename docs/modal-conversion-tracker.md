@@ -105,7 +105,7 @@ Also see `docs/guides/ui-feature-guide.md` for the modal initialization pattern.
 | Pull Conflict | Menu | ○ |
 | Push Menu | Selection | ○ |
 | Commit Message | Form | ✓ |
-| Branch Picker | Selection | ○ |
+| Branch Picker | Selection | ✓ |
 
 ---
 

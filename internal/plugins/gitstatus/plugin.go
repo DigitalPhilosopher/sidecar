@@ -15,9 +15,9 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
-	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
 
@@ -54,9 +54,9 @@ const commitHistoryPageSize = 50
 
 // Plugin implements the git status plugin.
 type Plugin struct {
-	ctx      *plugin.Context
-	repoRoot string // Resolved git repo root (may differ from ctx.WorkDir if started in subdirectory)
-	tree     *FileTree
+	ctx       *plugin.Context
+	repoRoot  string // Resolved git repo root (may differ from ctx.WorkDir if started in subdirectory)
+	tree      *FileTree
 	focused   bool
 	cursor    int
 	scrollOff int
@@ -65,15 +65,15 @@ type Plugin struct {
 	viewMode ViewMode
 
 	// Three-pane layout state
-	activePane     FocusPane // Which pane is focused
-	sidebarRestore FocusPane // Tracks pane focused before collapse; restored on expand via toggleSidebar()
-	sidebarVisible bool      // Toggle sidebar with Tab
-	sidebarWidth   int       // Calculated width (~30%)
-	diffPaneWidth  int       // Calculated width (~70%)
-	recentCommits      []*Commit // Cached recent commits for sidebar
-	commitScrollOff    int       // Scroll offset for commits section in sidebar
-	loadingMoreCommits bool      // Prevents duplicate load-more requests
-	moreCommitsAvailable bool    // Whether more commits are available to load
+	activePane           FocusPane // Which pane is focused
+	sidebarRestore       FocusPane // Tracks pane focused before collapse; restored on expand via toggleSidebar()
+	sidebarVisible       bool      // Toggle sidebar with Tab
+	sidebarWidth         int       // Calculated width (~30%)
+	diffPaneWidth        int       // Calculated width (~70%)
+	recentCommits        []*Commit // Cached recent commits for sidebar
+	commitScrollOff      int       // Scroll offset for commits section in sidebar
+	loadingMoreCommits   bool      // Prevents duplicate load-more requests
+	moreCommitsAvailable bool      // Whether more commits are available to load
 
 	// Inline diff state (for three-pane view)
 	selectedDiffFile    string       // File being previewed in diff pane
@@ -99,17 +99,16 @@ type Plugin struct {
 	parsedDiff     *ParsedDiff  // Parsed diff for enhanced rendering
 	diffReturnMode ViewMode     // View mode to return to on esc
 
-
 	// Push status state
-	pushStatus             *PushStatus
-	pushInProgress         bool
-	pushError              string
-	pushSuccess            bool      // Show success indicator after push
-	pushSuccessTime        time.Time // When to auto-clear success
-	pushMenuReturnMode     ViewMode  // Mode to return to when push menu closes
-	pushMenuFocus          int       // 0=push, 1=force, 2=upstream
-	pushMenuHover          int       // -1=none, 0=push, 1=force, 2=upstream
-	pushPreservedCommitHash string   // Hash of selected commit when push started
+	pushStatus              *PushStatus
+	pushInProgress          bool
+	pushError               string
+	pushSuccess             bool      // Show success indicator after push
+	pushSuccessTime         time.Time // When to auto-clear success
+	pushMenuReturnMode      ViewMode  // Mode to return to when push menu closes
+	pushMenuFocus           int       // 0=push, 1=force, 2=upstream
+	pushMenuHover           int       // -1=none, 0=push, 1=force, 2=upstream
+	pushPreservedCommitHash string    // Hash of selected commit when push started
 
 	// Pull menu state
 	pullMenuReturnMode ViewMode     // Mode to return to when pull menu closes
@@ -130,22 +129,22 @@ type Plugin struct {
 	lastRefresh time.Time // Debounce rapid refreshes
 
 	// Commit state
-	commitMessage     textarea.Model
-	commitError       string
-	commitInProgress  bool
-	commitAmend       bool // true when amending last commit
-	commitButtonFocus bool // true when button is focused instead of textarea
-	commitButtonHover bool // true when mouse is hovering over button
-	commitModal       *modal.Modal
+	commitMessage         textarea.Model
+	commitError           string
+	commitInProgress      bool
+	commitAmend           bool // true when amending last commit
+	commitButtonFocus     bool // true when button is focused instead of textarea
+	commitButtonHover     bool // true when mouse is hovering over button
+	commitModal           *modal.Modal
 	commitModalWidthCache int
 
 	// Mouse support
 	mouseHandler *mouse.Handler
 
 	// Discard confirm state
-	discardFile       *FileEntry    // File being confirmed for discard
-	discardReturnMode ViewMode      // Mode to return to when modal closes
-	discardModal      *modal.Modal  // Modal instance for discard confirmation
+	discardFile       *FileEntry   // File being confirmed for discard
+	discardReturnMode ViewMode     // Mode to return to when modal closes
+	discardModal      *modal.Modal // Modal instance for discard confirmation
 
 	// Stash pop confirm state
 	stashPopItem        *Stash // Stash being confirmed for pop
@@ -160,7 +159,8 @@ type Plugin struct {
 	branches          []*Branch // List of branches
 	branchCursor      int       // Current cursor position
 	branchReturnMode  ViewMode  // Mode to return to when modal closes
-	branchPickerHover int       // -1=none, 0+=branch index for hover state
+	branchPickerModal *modal.Modal
+	branchPickerWidth int
 
 	// Fetch/Pull state
 	fetchInProgress bool
@@ -202,7 +202,6 @@ func New() *Plugin {
 		truncateCache:  ui.NewTruncateCache(1000), // Cache up to 1000 truncations
 	}
 }
-
 
 // ID returns the plugin identifier.
 func (p *Plugin) ID() string { return pluginID }
@@ -568,6 +567,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Branch switched, close picker and refresh
 		p.viewMode = p.branchReturnMode
 		p.branches = nil
+		p.clearBranchPickerModal()
 		return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 
 	case BranchErrorMsg:
@@ -639,8 +639,6 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
-
-
 // CommitPreviewLoadedMsg is sent when commit preview is loaded.
 type CommitPreviewLoadedMsg struct {
 	Commit *Commit
@@ -657,7 +655,6 @@ func countParsedDiffLines(diff *ParsedDiff) int {
 	}
 	return count
 }
-
 
 // View renders the plugin.
 func (p *Plugin) View(width, height int) string {
@@ -867,7 +864,6 @@ func (p *Plugin) listenForWatchEvents() tea.Cmd {
 	}
 }
 
-
 // openFile opens a file in the default editor.
 func (p *Plugin) openFile(path string) tea.Cmd {
 	return func() tea.Msg {
@@ -889,7 +885,6 @@ func (p *Plugin) openInFileBrowser(path string) tea.Cmd {
 		},
 	)
 }
-
 
 func mergeRecentCommits(existing, latest []*Commit) []*Commit {
 	if len(latest) == 0 {
@@ -928,7 +923,6 @@ func indexOfCommitHash(commits []*Commit, hash string) int {
 	}
 	return -1
 }
-
 
 // countLines counts newlines in a string.
 func countLines(s string) int {
@@ -1093,8 +1087,6 @@ func (p *Plugin) initCommitTextarea() {
 	p.commitModal = nil
 	p.commitModalWidthCache = 0
 }
-
-
 
 // clearPushSuccessAfterDelay returns a command that clears the push success indicator after 3 seconds.
 func (p *Plugin) clearPushSuccessAfterDelay() tea.Cmd {
