@@ -354,10 +354,23 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 		}
 		relativeCol := cursorCol
 
-		// Only render cursor if within visible area
-		if relativeRow >= 0 && relativeRow < displayHeight && relativeCol >= 0 && relativeCol < displayWidth {
-			content = renderWithCursor(content, relativeRow, relativeCol, cursorVisible)
+		// Clamp cursor position to visible area instead of hiding it (td-16bfa6).
+		// This ensures cursor remains visible even during pane size mismatches,
+		// which can occur with lots of scrollback or during resize transitions.
+		if relativeRow < 0 {
+			relativeRow = 0
 		}
+		if relativeRow >= displayHeight {
+			relativeRow = displayHeight - 1
+		}
+		if relativeCol < 0 {
+			relativeCol = 0
+		}
+		if relativeCol >= displayWidth {
+			relativeCol = displayWidth - 1
+		}
+
+		content = renderWithCursor(content, relativeRow, relativeCol, cursorVisible)
 	}
 
 	return hint + "\n" + content
@@ -539,10 +552,23 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 		}
 		relativeCol := cursorCol
 
-		// Only render cursor if within visible area
-		if relativeRow >= 0 && relativeRow < displayHeight && relativeCol >= 0 && relativeCol < displayWidth {
-			content = renderWithCursor(content, relativeRow, relativeCol, cursorVisible)
+		// Clamp cursor position to visible area instead of hiding it (td-16bfa6).
+		// This ensures cursor remains visible even during pane size mismatches,
+		// which can occur with lots of scrollback or during resize transitions.
+		if relativeRow < 0 {
+			relativeRow = 0
 		}
+		if relativeRow >= displayHeight {
+			relativeRow = displayHeight - 1
+		}
+		if relativeCol < 0 {
+			relativeCol = 0
+		}
+		if relativeCol >= displayWidth {
+			relativeCol = displayWidth - 1
+		}
+
+		content = renderWithCursor(content, relativeRow, relativeCol, cursorVisible)
 	}
 
 	return hint + "\n" + content
