@@ -1,11 +1,20 @@
 package features
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/marcus/sidecar/internal/config"
 )
+
+// setupTestConfig sets up a temp config path for tests that write to config.
+func setupTestConfig(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	config.SetTestConfigPath(filepath.Join(tmpDir, "config.json"))
+	t.Cleanup(config.ResetTestConfigPath)
+}
 
 func TestIsEnabled_DefaultValue(t *testing.T) {
 	// Reset global manager
@@ -103,11 +112,13 @@ func TestSetEnabled_NilManager(t *testing.T) {
 }
 
 func TestSetEnabled_UpdatesConfig(t *testing.T) {
+	setupTestConfig(t)
+
 	cfg := config.Default()
 	Init(cfg)
 	defer func() { globalManager = nil }()
 
-	// SetEnabled modifies config (though Save may fail in test environment)
+	// SetEnabled modifies config and saves to temp file
 	_ = SetEnabled("tmux_interactive_input", true)
 
 	// Verify the config was updated
@@ -117,6 +128,8 @@ func TestSetEnabled_UpdatesConfig(t *testing.T) {
 }
 
 func TestSetEnabled_InitializesNilFlagsMap(t *testing.T) {
+	setupTestConfig(t)
+
 	cfg := config.Default()
 	cfg.Features.Flags = nil // Force nil map
 	Init(cfg)
@@ -185,6 +198,8 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestConcurrentSetEnabled(t *testing.T) {
+	setupTestConfig(t)
+
 	cfg := config.Default()
 	Init(cfg)
 	defer func() { globalManager = nil }()

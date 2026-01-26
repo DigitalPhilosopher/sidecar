@@ -796,15 +796,26 @@ func (m *Model) saveProjectAdd() tea.Cmd {
 		}
 	}
 
-	// Add to in-memory config
-	m.cfg.Projects.List = append(m.cfg.Projects.List, proj)
+	// Reload config from disk to avoid overwriting external changes
+	cfg, err := config.Load()
+	if err != nil {
+		return func() tea.Msg {
+			return ToastMsg{Message: "Failed to load config: " + err.Error(), Duration: 3 * time.Second, IsError: true}
+		}
+	}
+
+	// Add project to fresh config
+	cfg.Projects.List = append(cfg.Projects.List, proj)
 
 	// Save to disk
-	if err := config.Save(m.cfg); err != nil {
+	if err := config.Save(cfg); err != nil {
 		return func() tea.Msg {
 			return ToastMsg{Message: "Added project (save failed: " + err.Error() + ")", Duration: 3 * time.Second, IsError: true}
 		}
 	}
+
+	// Update in-memory config
+	m.cfg.Projects.List = cfg.Projects.List
 
 	// Refresh the filtered list
 	m.projectSwitcherFiltered = m.cfg.Projects.List

@@ -14,13 +14,33 @@ const (
 	configFile = "config.json"
 )
 
+// testConfigPath overrides the config path for testing.
+var testConfigPath string
+
+// SetTestConfigPath sets a custom config path for testing.
+// Call ResetTestConfigPath() in test cleanup to restore default behavior.
+func SetTestConfigPath(path string) {
+	testConfigPath = path
+}
+
+// ResetTestConfigPath clears the test config path override.
+func ResetTestConfigPath() {
+	testConfigPath = ""
+}
+
 // rawConfig is the JSON-unmarshaling intermediary.
 type rawConfig struct {
 	Projects rawProjectsConfig `json:"projects"`
 	Plugins  rawPluginsConfig  `json:"plugins"`
 	Keymap   KeymapConfig      `json:"keymap"`
-	UI       UIConfig          `json:"ui"`
+	UI       rawUIConfig       `json:"ui"`
 	Features FeaturesConfig    `json:"features"`
+}
+
+type rawUIConfig struct {
+	ShowFooter *bool       `json:"showFooter"`
+	ShowClock  *bool       `json:"showClock"`
+	Theme      ThemeConfig `json:"theme"`
 }
 
 type rawProjectsConfig struct {
@@ -199,8 +219,12 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 
 	// UI
-	cfg.UI.ShowFooter = raw.UI.ShowFooter
-	cfg.UI.ShowClock = raw.UI.ShowClock
+	if raw.UI.ShowFooter != nil {
+		cfg.UI.ShowFooter = *raw.UI.ShowFooter
+	}
+	if raw.UI.ShowClock != nil {
+		cfg.UI.ShowClock = *raw.UI.ShowClock
+	}
 	if raw.UI.Theme.Name != "" {
 		cfg.UI.Theme.Name = raw.UI.Theme.Name
 	}
@@ -245,6 +269,9 @@ func ExpandPath(path string) string {
 
 // ConfigPath returns the path to the config file.
 func ConfigPath() string {
+	if testConfigPath != "" {
+		return testConfigPath
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
