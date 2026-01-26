@@ -230,10 +230,17 @@ type Plugin struct {
 	stateRestored bool
 
 	// Inline editor state (tmux-based editing)
-	inlineEditor      *tty.Model // Embeddable tty model for inline editing
-	inlineEditMode    bool       // True when inline editing is active
-	inlineEditSession string     // Tmux session name for editor
-	inlineEditFile    string     // Path of file being edited
+	inlineEditor        *tty.Model  // Embeddable tty model for inline editing
+	inlineEditMode      bool        // True when inline editing is active
+	inlineEditSession   string      // Tmux session name for editor
+	inlineEditFile      string      // Path of file being edited
+	inlineEditOrigMtime time.Time   // Original file mtime (to detect changes)
+
+	// Exit confirmation state (when clicking away from editor)
+	showExitConfirmation bool        // True when confirmation dialog is shown
+	pendingClickRegion   string      // Region that was clicked (regionTreePane, etc)
+	pendingClickData     interface{} // Data associated with the click
+	exitConfirmSelection int         // 0=Save&Exit, 1=Exit without saving, 2=Cancel
 }
 
 // New creates a new File Browser plugin.
@@ -414,8 +421,43 @@ func (p *Plugin) refresh() tea.Cmd {
 
 // Update handles messages.
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
+	// Handle exit confirmation dialog first
+	if p.showExitConfirmation {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "j", "down":
+				p.exitConfirmSelection = (p.exitConfirmSelection + 1) % 3
+				return p, nil
+			case "k", "up":
+				p.exitConfirmSelection = (p.exitConfirmSelection + 2) % 3
+				return p, nil
+			case "enter":
+				return p.handleExitConfirmationChoice()
+			case "esc", "q":
+				// Cancel - return to editing
+				p.showExitConfirmation = false
+				p.pendingClickRegion = ""
+				p.pendingClickData = nil
+				return p, nil
+			}
+		}
+		return p, nil
+	}
+
 	// Handle inline edit mode - delegate most messages to tty model
-	if p.inlineEditMode && p.inlineEditor != nil && p.inlineEditor.IsActive() {
+	if p.inlineEditMode && p.inlineEditor != nil {
+		// Check if editor became inactive (vim exited normally)
+		// Also check if tmux session died (handles :wq case before SessionDeadMsg arrives)
+		if !p.inlineEditor.IsActive() || !p.isInlineEditSessionAlive() {
+			editedFile := p.inlineEditFile // Save before exitInlineEditMode clears it
+			p.exitInlineEditMode()
+			// Refresh preview to show updated file
+			if editedFile != "" {
+				return p, LoadPreview(p.ctx.WorkDir, editedFile)
+			}
+			return p, p.refresh()
+		}
+
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
 			p.width = msg.Width
@@ -423,7 +465,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Update inline editor dimensions
 			return p, p.inlineEditor.SetDimensions(p.calculateInlineEditorWidth(), p.calculateInlineEditorHeight())
 
-		case tea.KeyMsg, tea.MouseMsg, tty.EscapeTimerMsg, tty.CaptureResultMsg,
+		case tea.MouseMsg:
+			// Route mouse through handleMouse for click-away detection
+			return p.handleMouse(msg)
+
+		case tea.KeyMsg, tty.EscapeTimerMsg, tty.CaptureResultMsg,
 			tty.PollTickMsg, tty.PaneResizedMsg, tty.SessionDeadMsg, tty.PasteResultMsg:
 			cmd := p.inlineEditor.Update(msg)
 			// Check if editor exited
@@ -631,7 +677,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, p.handleInlineEditStarted(msg)
 
 	case InlineEditExitedMsg:
-		// Refresh preview after editing
+		// Check if there was a pending click action (from Save & Exit)
+		if p.pendingClickRegion != "" {
+			return p.processPendingClickAction()
+		}
+		// Normal exit - refresh preview after editing
 		if msg.FilePath != "" {
 			return p, LoadPreview(p.ctx.WorkDir, msg.FilePath)
 		}
@@ -667,6 +717,8 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "new-tab", Name: "Tab+", Description: "Open file in new tab", Category: plugin.CategoryNavigation, Context: "file-browser-tree", Priority: 2},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
 		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 2},
+		{ID: "edit", Name: "Edit", Description: "Edit file inline", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 2},
+		{ID: "edit-external", Name: "Edit+", Description: "Edit in full terminal", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 2},
 		{ID: "blame", Name: "Blame", Description: "Show git blame", Category: plugin.CategoryView, Context: "file-browser-tree", Priority: 3},
 		{ID: "search", Name: "Filter", Description: "Filter files by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 3},
 		{ID: "close-tab", Name: "Close", Description: "Close active tab", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
@@ -689,6 +741,8 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
 		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 2},
+		{ID: "edit", Name: "Edit", Description: "Edit file inline", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 2},
+		{ID: "edit-external", Name: "Edit+", Description: "Edit in full terminal", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 2},
 		{ID: "prev-tab", Name: "Tab←", Description: "Previous tab", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 3},
 		{ID: "next-tab", Name: "Tab→", Description: "Next tab", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 3},
 		{ID: "blame", Name: "Blame", Description: "Show git blame", Category: plugin.CategoryView, Context: "file-browser-preview", Priority: 3},

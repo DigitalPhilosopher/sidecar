@@ -9,15 +9,16 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/msg"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // InlineEditStartedMsg is sent when inline edit mode starts successfully.
 type InlineEditStartedMsg struct {
-	SessionName string
-	FilePath    string
+	SessionName  string
+	FilePath     string
+	OriginalMtime time.Time // File mtime before editing (to detect changes)
 }
 
 // InlineEditExitedMsg is sent when inline edit mode exits.
@@ -54,6 +55,12 @@ func (p *Plugin) enterInlineEditMode(path string) tea.Cmd {
 			return nil
 		}
 
+		// Capture original mtime to detect changes later
+		var origMtime time.Time
+		if info, err := os.Stat(fullPath); err == nil {
+			origMtime = info.ModTime()
+		}
+
 		// Create a detached tmux session with the editor
 		// Use -x and -y to set initial size (will be resized later)
 		cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName,
@@ -72,8 +79,9 @@ func (p *Plugin) enterInlineEditMode(path string) tea.Cmd {
 		_ = strings.TrimSpace(string(output)) // paneID for future use
 
 		return InlineEditStartedMsg{
-			SessionName: sessionName,
-			FilePath:    path,
+			SessionName:   sessionName,
+			FilePath:      path,
+			OriginalMtime: origMtime,
 		}
 	}
 }
@@ -83,6 +91,7 @@ func (p *Plugin) handleInlineEditStarted(msg InlineEditStartedMsg) tea.Cmd {
 	p.inlineEditMode = true
 	p.inlineEditSession = msg.SessionName
 	p.inlineEditFile = msg.FilePath
+	p.inlineEditOrigMtime = msg.OriginalMtime
 
 	// Configure the tty model callbacks
 	p.inlineEditor.OnExit = func() tea.Cmd {
@@ -112,7 +121,33 @@ func (p *Plugin) exitInlineEditMode() {
 	p.inlineEditMode = false
 	p.inlineEditSession = ""
 	p.inlineEditFile = ""
+	p.inlineEditOrigMtime = time.Time{}
 	p.inlineEditor.Exit()
+}
+
+// isFileModifiedSinceEdit checks if the file was modified since editing started.
+// Returns false if we can't determine (safe to skip confirmation).
+func (p *Plugin) isFileModifiedSinceEdit() bool {
+	if p.inlineEditFile == "" || p.inlineEditOrigMtime.IsZero() {
+		return false // Can't determine, assume not modified
+	}
+	fullPath := filepath.Join(p.ctx.WorkDir, p.inlineEditFile)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return false // File doesn't exist or error, assume not modified
+	}
+	return info.ModTime().After(p.inlineEditOrigMtime)
+}
+
+// isInlineEditSessionAlive checks if the tmux session for inline editing still exists.
+// Returns false if the session has ended (vim quit).
+func (p *Plugin) isInlineEditSessionAlive() bool {
+	if p.inlineEditSession == "" {
+		return false
+	}
+	// Check if the tmux session exists using has-session
+	err := exec.Command("tmux", "has-session", "-t", p.inlineEditSession).Run()
+	return err == nil
 }
 
 // attachToInlineEditSession attaches to the inline edit tmux session in full-screen mode.
@@ -135,32 +170,35 @@ type AttachToTmuxMsg struct {
 	SessionName string
 }
 
-// calculateInlineEditorWidth returns the width for the inline editor.
+// calculateInlineEditorWidth returns the content width for the inline editor.
+// Must stay in sync with renderNormalPanes() preview width calculation.
 func (p *Plugin) calculateInlineEditorWidth() int {
-	// Use the preview pane width
 	if !p.treeVisible {
-		return p.width - 2 // Account for borders
+		return p.width - 4 // borders + padding (panelOverhead)
 	}
-	// Account for tree pane and divider
-	available := p.width - 1 // divider
-	treeW := p.treeWidth
-	if treeW <= 0 {
-		treeW = 30 // default
-	}
-	if treeW > available-40 {
-		treeW = available - 40
-	}
-	return available - treeW - 2 // Account for borders
+	p.calculatePaneWidths()
+	return p.previewWidth - 4 // borders + padding
 }
 
-// calculateInlineEditorHeight returns the height for the inline editor.
+// calculateInlineEditorHeight returns the content height for the inline editor.
+// Account for pane borders, header lines, and tab line.
 func (p *Plugin) calculateInlineEditorHeight() int {
-	// Account for header, footer, tabs, and borders
-	h := p.height - 5
-	if h < 10 {
-		h = 10
+	paneHeight := p.height
+	if paneHeight < 4 {
+		paneHeight = 4
 	}
-	return h
+	innerHeight := paneHeight - 2 // pane borders
+
+	// Subtract header lines (matches renderInlineEditorContent)
+	contentHeight := innerHeight - 2 // header + empty line
+	if len(p.tabs) > 1 {
+		contentHeight-- // tab line
+	}
+
+	if contentHeight < 5 {
+		contentHeight = 5
+	}
+	return contentHeight
 }
 
 // isInlineEditSupported checks if inline editing can be used for the given file.
@@ -183,37 +221,162 @@ func (p *Plugin) isInlineEditSupported(path string) bool {
 	return true
 }
 
-// renderInlineEditView renders the inline editor view.
-func (p *Plugin) renderInlineEditView() string {
+// renderInlineEditorContent renders the inline editor within the preview pane area.
+// This is called from renderPreviewPane() when inline edit mode is active.
+func (p *Plugin) renderInlineEditorContent(visibleHeight int) string {
+	// If showing exit confirmation, render that instead
+	if p.showExitConfirmation {
+		return p.renderExitConfirmation(visibleHeight)
+	}
+
 	var sb strings.Builder
 
-	// Render a simple header with the file being edited
+	// Tab line (to match normal preview rendering)
+	if len(p.tabs) > 1 {
+		tabLine := p.renderPreviewTabs(p.previewWidth - 4)
+		sb.WriteString(tabLine)
+		sb.WriteString("\n")
+	}
+
+	// Header with file being edited and exit hint
 	fileName := filepath.Base(p.inlineEditFile)
-	header := fmt.Sprintf(" Editing: %s (Ctrl+\\ or double-ESC to exit)", fileName)
-	headerStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#7C3AED")).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Bold(true).
-		Width(p.width)
-	sb.WriteString(headerStyle.Render(header))
+	header := fmt.Sprintf("Editing: %s", fileName)
+	sb.WriteString(styles.Title.Render(header))
+	sb.WriteString("  ")
+	sb.WriteString(styles.Muted.Render("(Ctrl+\\ or ESC ESC to exit)"))
 	sb.WriteString("\n")
 
-	// Get the terminal content from the tty model
+	// Calculate content height (account for tab line and header)
+	contentHeight := visibleHeight
+	if len(p.tabs) > 1 {
+		contentHeight-- // tab line
+	}
+	contentHeight -= 2 // header + empty line
+
+	// Render terminal content from tty model
 	if p.inlineEditor != nil {
 		content := p.inlineEditor.View()
-		// Render within available height
-		contentHeight := p.height - 2 // Account for header
 		lines := strings.Split(content, "\n")
+
+		// Limit to content height
 		if len(lines) > contentHeight {
 			lines = lines[:contentHeight]
 		}
-		// Pad with empty lines if needed
-		for len(lines) < contentHeight {
-			lines = append(lines, "")
-		}
+
 		sb.WriteString(strings.Join(lines, "\n"))
 	}
 
 	return sb.String()
+}
+
+// renderExitConfirmation renders the exit confirmation dialog overlay.
+func (p *Plugin) renderExitConfirmation(visibleHeight int) string {
+	options := []string{"Save & Exit", "Exit without saving", "Cancel"}
+
+	var sb strings.Builder
+
+	// Tab line (keep consistent with editor view)
+	if len(p.tabs) > 1 {
+		tabLine := p.renderPreviewTabs(p.previewWidth - 4)
+		sb.WriteString(tabLine)
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(styles.Title.Render("Exit editor?"))
+	sb.WriteString("\n\n")
+
+	for i, opt := range options {
+		if i == p.exitConfirmSelection {
+			sb.WriteString(styles.ListItemSelected.Render("> " + opt))
+		} else {
+			sb.WriteString("  " + opt)
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(styles.Muted.Render("[j/k to select, Enter to confirm, Esc to cancel]"))
+
+	return sb.String()
+}
+
+// handleExitConfirmationChoice processes the user's selection in the exit confirmation dialog.
+func (p *Plugin) handleExitConfirmationChoice() (*Plugin, tea.Cmd) {
+	p.showExitConfirmation = false
+
+	switch p.exitConfirmSelection {
+	case 0: // Save & Exit
+		// Send :wq to vim, then exit immediately
+		target := p.inlineEditSession
+		// Send Escape to ensure normal mode, then :wq to save and quit
+		exec.Command("tmux", "send-keys", "-t", target, "Escape").Run()
+		exec.Command("tmux", "send-keys", "-t", target, ":wq", "Enter").Run()
+		// Give vim a moment to save, then kill session and proceed
+		// (The session may already be dead from :wq, kill-session will just fail silently)
+		p.exitInlineEditMode()
+		return p.processPendingClickAction()
+
+	case 1: // Exit without saving
+		// Kill session immediately, then process pending action
+		p.exitInlineEditMode()
+		return p.processPendingClickAction()
+
+	case 2: // Cancel
+		p.pendingClickRegion = ""
+		p.pendingClickData = nil
+		return p, nil
+	}
+
+	return p, nil
+}
+
+// processPendingClickAction handles the click that triggered exit confirmation.
+func (p *Plugin) processPendingClickAction() (*Plugin, tea.Cmd) {
+	region := p.pendingClickRegion
+	data := p.pendingClickData
+
+	// Clear pending state
+	p.pendingClickRegion = ""
+	p.pendingClickData = nil
+
+	switch region {
+	case "tree-item":
+		// User clicked a tree item - select it
+		if idx, ok := data.(int); ok {
+			return p.selectTreeItem(idx)
+		}
+	case "tree-pane":
+		// User clicked tree pane background - focus tree
+		p.activePane = PaneTree
+		return p, nil
+	case "preview-tab":
+		// User clicked a tab - switch to it
+		if idx, ok := data.(int); ok {
+			p.activeTab = idx
+			if idx < len(p.tabs) {
+				return p, LoadPreview(p.ctx.WorkDir, p.tabs[idx].Path)
+			}
+		}
+	}
+
+	return p, nil
+}
+
+// selectTreeItem selects the given tree item and loads its preview.
+func (p *Plugin) selectTreeItem(idx int) (*Plugin, tea.Cmd) {
+	if idx < 0 || idx >= p.tree.Len() {
+		return p, nil
+	}
+
+	p.treeCursor = idx
+	p.ensureTreeCursorVisible()
+	p.activePane = PaneTree
+
+	node := p.tree.GetNode(idx)
+	if node == nil || node.IsDir {
+		return p, nil
+	}
+
+	return p, LoadPreview(p.ctx.WorkDir, node.Path)
 }
 
