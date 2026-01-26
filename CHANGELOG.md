@@ -2,6 +2,28 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.50.0] - 2026-01-26
+
+### Features
+
+- **Shell Persistence**: Workspace shells now persist across sidecar restarts with multi-instance sync
+- **Resume Conversation to Workspace**: Resume conversations directly into a workspace
+
+### Bug Fixes
+
+- Prevent tests from corrupting user config file
+- Forward all keys to vim in inline edit mode
+- Add delay after tmux resize before attach to prevent rendering issues
+- Use list ID for agent focus in create worktree modal
+- Add `.sidecar/` to default gitignore entries
+- Make single focus default for list sections
+- Fix race conditions in workspace plugin
+- Update manifest when recreating orphaned shell
+
+### Dependencies
+
+- Updated td dependency to v0.23.0
+
 ## [v0.49.0] - 2026-01-26
 
 ### Dependencies
