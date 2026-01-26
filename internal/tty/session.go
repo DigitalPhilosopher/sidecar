@@ -124,10 +124,11 @@ func SendSGRMouse(sessionName string, button, col, row int, release bool) error 
 }
 
 // CapturePaneOutput captures the current output of a tmux pane.
-// Uses capture-pane with -p flag to print to stdout.
+// Uses capture-pane with -p flag to print to stdout and -e to preserve
+// ANSI escape sequences (colors, styles).
 // The scrollback parameter controls how many lines of history to capture.
 func CapturePaneOutput(target string, scrollback int) (string, error) {
-	args := []string{"capture-pane", "-p", "-t", target}
+	args := []string{"capture-pane", "-p", "-e", "-t", target}
 	if scrollback > 0 {
 		args = append(args, "-S", fmt.Sprintf("-%d", scrollback))
 	}

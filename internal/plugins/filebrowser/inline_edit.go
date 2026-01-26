@@ -49,6 +49,12 @@ func (p *Plugin) enterInlineEditMode(path string) tea.Cmd {
 	// Generate a unique session name
 	sessionName := fmt.Sprintf("sidecar-edit-%d", time.Now().UnixNano())
 
+	// Get TERM for color support (inherit from parent or default to xterm-256color)
+	term := os.Getenv("TERM")
+	if term == "" {
+		term = "xterm-256color"
+	}
+
 	return func() tea.Msg {
 		// Check if tmux is available
 		if _, err := exec.LookPath("tmux"); err != nil {
@@ -64,8 +70,9 @@ func (p *Plugin) enterInlineEditMode(path string) tea.Cmd {
 
 		// Create a detached tmux session with the editor
 		// Use -x and -y to set initial size (will be resized later)
+		// Pass TERM environment for proper color/theme support
 		cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName,
-			"-x", "80", "-y", "24", editor, fullPath)
+			"-x", "80", "-y", "24", "-e", "TERM="+term, editor, fullPath)
 		if err := cmd.Run(); err != nil {
 			return msg.ToastMsg{
 				Message:  fmt.Sprintf("Failed to start editor: %v", err),
