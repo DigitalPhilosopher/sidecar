@@ -2,6 +2,12 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.49.0] - 2026-01-26
+
+### Dependencies
+
+- Updated td dependency to v0.22.1
+
 ## [v0.48.0] - 2026-01-25
 
 ### Features
