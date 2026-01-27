@@ -2,6 +2,7 @@ package tdmonitor
 
 import (
 	"fmt"
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,8 +31,14 @@ type Plugin struct {
 	// Embedded td monitor model
 	model *monitor.Model
 
-	// Not-installed view (shown when td database not found)
+	// Not-installed view (shown when td binary not found on system)
 	notInstalled *NotInstalledModel
+
+	// Setup modal (shown when td is on PATH but project not initialized)
+	setupModal *SetupModel
+
+	// tdOnPath tracks whether td binary is available on the system
+	tdOnPath bool
 
 	// View dimensions (passed to model on each render)
 	width  int
@@ -65,7 +72,12 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	// Clear any stale state from previous initialization (important for project switching)
 	p.model = nil
 	p.notInstalled = nil
+	p.setupModal = nil
 	p.started = false
+
+	// Check if td binary is available on PATH
+	_, err := exec.LookPath("td")
+	p.tdOnPath = err == nil
 
 	// Try to create embedded monitor with custom renderers for gradient borders.
 	// Version is empty for embedded use (not displayed in this context).
@@ -79,9 +91,15 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	}
 	model, err := monitor.NewEmbeddedWithOptions(opts)
 	if err != nil {
-		// Database not initialized - show animated not-installed view
+		// Database not initialized - decide which view to show
 		p.ctx.Logger.Debug("td monitor: database not found", "error", err)
-		p.notInstalled = NewNotInstalledModel()
+		if p.tdOnPath {
+			// td is installed but project not initialized - show setup modal
+			p.setupModal = NewSetupModel(ctx.WorkDir)
+		} else {
+			// td is not installed on system - show not-installed view
+			p.notInstalled = NewNotInstalledModel()
+		}
 		return nil
 	}
 
@@ -104,6 +122,10 @@ func (p *Plugin) Start() tea.Cmd {
 		if p.notInstalled != nil {
 			return p.notInstalled.Init()
 		}
+		// Setup modal doesn't need animation init
+		if p.setupModal != nil {
+			return p.setupModal.Init()
+		}
 		return nil
 	}
 	// Delegate to monitor's Init which starts data fetch and tick
@@ -119,12 +141,33 @@ func (p *Plugin) Stop() {
 		p.model = nil
 	}
 	p.notInstalled = nil
+	p.setupModal = nil
 	p.started = false
 }
 
 // Update handles messages by delegating to the embedded monitor.
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
+	// Handle setup completion - reinitialize to load the monitor
+	if _, ok := msg.(SetupCompleteMsg); ok {
+		if err := p.Init(p.ctx); err == nil {
+			return p, p.Start()
+		}
+		return p, nil
+	}
+
+	// Handle setup skip - show not-installed view
+	if _, ok := msg.(SetupSkippedMsg); ok {
+		p.setupModal = nil
+		p.notInstalled = NewNotInstalledModel()
+		return p, p.notInstalled.Init()
+	}
+
 	if p.model == nil {
+		// Handle setup modal
+		if p.setupModal != nil {
+			cmd := p.setupModal.Update(msg)
+			return p, cmd
+		}
 		// Handle not-installed animation
 		if p.notInstalled != nil {
 			cmd := p.notInstalled.Update(msg)
@@ -225,7 +268,9 @@ func (p *Plugin) View(width, height int) string {
 
 	var content string
 	if p.model == nil {
-		if p.notInstalled != nil {
+		if p.setupModal != nil {
+			content = p.setupModal.View(width, height)
+		} else if p.notInstalled != nil {
 			content = p.notInstalled.View(width, height)
 		} else {
 			content = "No td database found.\nRun 'td init' to initialize."

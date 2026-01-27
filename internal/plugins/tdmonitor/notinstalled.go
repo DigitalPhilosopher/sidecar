@@ -243,7 +243,7 @@ func (m *NotInstalledModel) renderPitch() string {
 	var b strings.Builder
 
 	// Explain why they're seeing this screen
-	b.WriteString(mutedStyle.Render("td is not installed in this project."))
+	b.WriteString(mutedStyle.Render("td is not installed on your system."))
 	b.WriteString("\n\n")
 
 	b.WriteString(titleStyle.Render("External memory for AI sessions"))
@@ -261,9 +261,9 @@ func (m *NotInstalledModel) renderPitch() string {
 	b.WriteString(mutedStyle.Render("Local SQLite. No cloud. Git-friendly."))
 	b.WriteString("\n\n")
 
-	// GitHub link
+	// Website link
 	b.WriteString(textStyle.Render("Learn more: "))
-	b.WriteString(linkStyle.Render("https://github.com/marcus/td"))
+	b.WriteString(linkStyle.Render("https://marcus.github.io/td/"))
 	b.WriteString("\n\n")
 
 	installCmd := "go install github.com/marcus/td/cmd/td@latest\ntd init"
