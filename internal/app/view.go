@@ -78,6 +78,13 @@ func (m Model) View() string {
 		return m.renderPaletteOverlay(bg)
 	case ModalHelp:
 		return m.renderHelpModal(bg)
+	case ModalUpdate:
+		// Render update modal, with optional changelog overlay
+		updateView := m.renderUpdateModalOverlay(bg)
+		if m.changelogVisible {
+			return m.renderChangelogOverlay(updateView)
+		}
+		return updateView
 	case ModalDiagnostics:
 		return m.renderDiagnosticsModal(bg)
 	case ModalQuitConfirm:
@@ -879,20 +886,6 @@ func bindingKeysByCommand(bindings []keymap.Binding) map[string][]string {
 	return keysByCmd
 }
 
-func renderHintLine(hints []footerHint) string {
-	if len(hints) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(hints))
-	for _, hint := range hints {
-		if hint.keys == "" || hint.label == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s %s", styles.KeyHint.Render(hint.keys), hint.label))
-	}
-	return strings.Join(parts, "  ")
-}
-
 // renderHintLineTruncated renders hints but stops adding when maxWidth is exceeded.
 func renderHintLineTruncated(hints []footerHint, maxWidth int) string {
 	if len(hints) == 0 || maxWidth <= 0 {
@@ -1044,16 +1037,4 @@ func formatCommandName(cmd string) string {
 	// Convert kebab-case to readable format
 	name := strings.ReplaceAll(cmd, "-", " ")
 	return name
-}
-
-// buildUpdateLabel returns a description of what will be updated.
-func (m Model) buildUpdateLabel() string {
-	var parts []string
-	if m.updateAvailable != nil {
-		parts = append(parts, "sidecar "+m.updateAvailable.LatestVersion)
-	}
-	if m.tdVersionInfo != nil && m.tdVersionInfo.HasUpdate && m.tdVersionInfo.Installed {
-		parts = append(parts, "td "+m.tdVersionInfo.LatestVersion)
-	}
-	return strings.Join(parts, " + ")
 }

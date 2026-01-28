@@ -19,6 +19,8 @@ const (
 // Release represents a GitHub release response.
 type Release struct {
 	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
 	PublishedAt time.Time `json:"published_at"`
 	HTMLURL     string    `json:"html_url"`
 }
@@ -28,6 +30,7 @@ type CheckResult struct {
 	CurrentVersion string
 	LatestVersion  string
 	UpdateURL      string
+	ReleaseNotes   string
 	HasUpdate      bool
 	Error          error
 }
@@ -73,6 +76,7 @@ func CheckRepo(owner, repo, currentVersion string) CheckResult {
 
 	result.LatestVersion = release.TagName
 	result.UpdateURL = release.HTMLURL
+	result.ReleaseNotes = release.Body
 	result.HasUpdate = isNewer(release.TagName, currentVersion)
 
 	return result

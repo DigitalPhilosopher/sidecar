@@ -31,6 +31,7 @@ const (
 	ModalNone             ModalKind = iota // No modal open
 	ModalPalette                           // Command palette (highest priority)
 	ModalHelp                              // Help overlay
+	ModalUpdate                            // Update modal
 	ModalDiagnostics                       // Diagnostics/version info
 	ModalQuitConfirm                       // Quit confirmation dialog
 	ModalProjectSwitcher                   // Project switcher
@@ -46,6 +47,8 @@ func (m *Model) activeModal() ModalKind {
 		return ModalPalette
 	case m.showHelp:
 		return ModalHelp
+	case m.updateModalState != UpdateModalClosed:
+		return ModalUpdate
 	case m.showDiagnostics:
 		return ModalDiagnostics
 	case m.showQuitConfirm:
@@ -197,6 +200,32 @@ type Model struct {
 	needsRestart       bool
 	updateSpinnerFrame int
 
+	// Update modal state
+	updateModalState      UpdateModalState
+	updatePhase           UpdatePhase
+	updatePhaseStatus     map[UpdatePhase]string
+	updateStartTime       time.Time
+	updateReleaseNotes    string // Release notes for current update
+	updateChangelog       string // Full changelog content
+	changelogVisible      bool
+	changelogScrollOffset int
+
+	// Update modal (declarative)
+	updatePreviewModal        *modal.Modal
+	updatePreviewModalWidth   int
+	updatePreviewMouseHandler *mouse.Handler
+	updateCompleteModal       *modal.Modal
+	updateCompleteModalWidth  int
+	updateCompleteMouseHandler *mouse.Handler
+	updateErrorModal          *modal.Modal
+	updateErrorModalWidth     int
+	updateErrorMouseHandler   *mouse.Handler
+	changelogModal            *modal.Modal
+	changelogModalWidth       int
+	changelogMouseHandler     *mouse.Handler
+	changelogRenderedLines    []string // Cached rendered changelog lines
+	changelogMaxVisibleLines  int      // Max lines visible in viewport
+
 	// Intro animation
 	intro IntroModel
 }
@@ -232,6 +261,7 @@ func New(reg *plugin.Registry, km *keymap.Registry, cfg *config.Config, currentV
 		intro:                 NewIntroModel(repoName),
 		currentVersion:        currentVersion,
 		communityBrowserHover: -1,
+		updatePhaseStatus:     make(map[UpdatePhase]string),
 	}
 }
 
@@ -405,6 +435,138 @@ func (m *Model) doUpdate() tea.Cmd {
 			TdUpdated:         tdUpdated,
 			NewSidecarVersion: newSidecarVersion,
 			NewTdVersion:      newTdVersion,
+		}
+	}
+}
+
+// initPhaseStatus initializes all update phases to pending status.
+func (m *Model) initPhaseStatus() {
+	m.updatePhaseStatus = map[UpdatePhase]string{
+		PhaseCheckPrereqs: "pending",
+		PhaseInstalling:   "pending",
+		PhaseVerifying:    "pending",
+	}
+}
+
+// startUpdateWithPhases starts the update process with phase tracking.
+// This replaces the old doUpdate for the new modal-based update flow.
+func (m *Model) startUpdateWithPhases() tea.Cmd {
+	return tea.Batch(
+		// Start elapsed timer
+		m.startElapsedTimer(),
+		// Start spinner animation
+		updateSpinnerTick(),
+		// Start the first phase (check prerequisites)
+		m.runCheckPrerequisites(),
+	)
+}
+
+// startElapsedTimer starts the elapsed time ticker.
+func (m *Model) startElapsedTimer() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return UpdateElapsedTickMsg{}
+	})
+}
+
+// UpdatePrereqsPassedMsg signals prerequisites check passed, triggers install phase.
+type UpdatePrereqsPassedMsg struct{}
+
+// UpdateInstallDoneMsg signals install completed, triggers verify phase.
+type UpdateInstallDoneMsg struct {
+	SidecarUpdated    bool
+	TdUpdated         bool
+	NewSidecarVersion string
+	NewTdVersion      string
+}
+
+// runCheckPrerequisites runs the prerequisites check phase.
+func (m *Model) runCheckPrerequisites() tea.Cmd {
+	return func() tea.Msg {
+		if _, err := exec.LookPath("go"); err != nil {
+			return UpdateErrorMsg{Step: "check", Err: fmt.Errorf("go not found in PATH")}
+		}
+		return UpdatePrereqsPassedMsg{}
+	}
+}
+
+// runInstallPhase runs the install phase (go install commands).
+func (m *Model) runInstallPhase() tea.Cmd {
+	sidecarUpdate := m.updateAvailable
+	tdUpdate := m.tdVersionInfo
+
+	return func() tea.Msg {
+		var sidecarUpdated, tdUpdated bool
+		var newSidecarVersion, newTdVersion string
+
+		// Update sidecar
+		if sidecarUpdate != nil {
+			args := []string{
+				"install",
+				"-ldflags", fmt.Sprintf("-X main.Version=%s", sidecarUpdate.LatestVersion),
+				fmt.Sprintf("github.com/marcus/sidecar/cmd/sidecar@%s", sidecarUpdate.LatestVersion),
+			}
+			cmd := exec.Command("go", args...)
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return UpdateErrorMsg{Step: "sidecar", Err: fmt.Errorf("%v: %s", err, output)}
+			}
+			sidecarUpdated = true
+			newSidecarVersion = sidecarUpdate.LatestVersion
+		}
+
+		// Update td
+		if tdUpdate != nil && tdUpdate.HasUpdate && tdUpdate.Installed {
+			cmd := exec.Command("go", "install",
+				fmt.Sprintf("github.com/marcus/td@%s", tdUpdate.LatestVersion))
+			if output, err := cmd.CombinedOutput(); err != nil {
+				return UpdateErrorMsg{Step: "td", Err: fmt.Errorf("%v: %s", err, output)}
+			}
+			tdUpdated = true
+			newTdVersion = tdUpdate.LatestVersion
+		}
+
+		return UpdateInstallDoneMsg{
+			SidecarUpdated:    sidecarUpdated,
+			TdUpdated:         tdUpdated,
+			NewSidecarVersion: newSidecarVersion,
+			NewTdVersion:      newTdVersion,
+		}
+	}
+}
+
+// runVerifyPhase runs the verification phase (check installed binaries).
+func (m *Model) runVerifyPhase(installResult UpdateInstallDoneMsg) tea.Cmd {
+	return func() tea.Msg {
+		// Verify sidecar binary if it was updated
+		if installResult.SidecarUpdated {
+			sidecarPath, err := exec.LookPath("sidecar")
+			if err != nil {
+				return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf("sidecar not found in PATH after install")}
+			}
+			// Verify the binary is executable by running --version
+			cmd := exec.Command(sidecarPath, "--version")
+			if err := cmd.Run(); err != nil {
+				return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf("sidecar binary not executable: %v", err)}
+			}
+		}
+
+		// Verify td binary if it was updated
+		if installResult.TdUpdated {
+			tdPath, err := exec.LookPath("td")
+			if err != nil {
+				return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf("td not found in PATH after install")}
+			}
+			// Verify the binary is executable
+			cmd := exec.Command(tdPath, "version", "--short")
+			if err := cmd.Run(); err != nil {
+				return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf("td binary not executable: %v", err)}
+			}
+		}
+
+		return UpdateSuccessMsg{
+			SidecarUpdated:    installResult.SidecarUpdated,
+			TdUpdated:         installResult.TdUpdated,
+			NewSidecarVersion: installResult.NewSidecarVersion,
+			NewTdVersion:      installResult.NewTdVersion,
 		}
 	}
 }

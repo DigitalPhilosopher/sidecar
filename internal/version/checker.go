@@ -14,6 +14,8 @@ type UpdateAvailableMsg struct {
 	CurrentVersion string
 	LatestVersion  string
 	UpdateCommand  string
+	ReleaseNotes   string
+	ReleaseURL     string
 }
 
 // TdVersionMsg is sent with td version info (installed or not).
@@ -65,6 +67,8 @@ func CheckAsync(currentVersion string) tea.Cmd {
 				CurrentVersion: currentVersion,
 				LatestVersion:  result.LatestVersion,
 				UpdateCommand:  updateCommand(result.LatestVersion),
+				ReleaseNotes:   result.ReleaseNotes,
+				ReleaseURL:     result.UpdateURL,
 			}
 		}
 
@@ -89,6 +93,8 @@ func ForceCheckAsync(currentVersion string) tea.Cmd {
 				CurrentVersion: currentVersion,
 				LatestVersion:  result.LatestVersion,
 				UpdateCommand:  updateCommand(result.LatestVersion),
+				ReleaseNotes:   result.ReleaseNotes,
+				ReleaseURL:     result.UpdateURL,
 			}
 		}
 		return nil
