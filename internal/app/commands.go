@@ -147,6 +147,55 @@ type UpdateErrorMsg struct {
 // UpdateSpinnerTickMsg triggers spinner animation during update.
 type UpdateSpinnerTickMsg struct{}
 
+// UpdateModalState represents the current state of the update modal.
+type UpdateModalState int
+
+const (
+	UpdateModalClosed   UpdateModalState = iota // Modal not visible
+	UpdateModalPreview                          // Show release notes before update
+	UpdateModalProgress                         // Show multi-phase progress during update
+	UpdateModalComplete                         // Show completion message
+	UpdateModalError                            // Show error details
+)
+
+// UpdatePhase represents a phase of the update process.
+type UpdatePhase int
+
+const (
+	PhaseCheckPrereqs UpdatePhase = iota // Checking prerequisites (go installed)
+	PhaseInstalling                      // Installing via go install
+	PhaseVerifying                       // Verifying installation
+)
+
+// String returns the display name for an update phase.
+func (p UpdatePhase) String() string {
+	switch p {
+	case PhaseCheckPrereqs:
+		return "Checking prerequisites"
+	case PhaseInstalling:
+		return "Installing"
+	case PhaseVerifying:
+		return "Verifying"
+	default:
+		return "Unknown"
+	}
+}
+
+// UpdatePhaseChangeMsg signals a change in update phase status.
+type UpdatePhaseChangeMsg struct {
+	Phase  UpdatePhase
+	Status string // "pending", "running", "done", "error"
+}
+
+// UpdateElapsedTickMsg triggers elapsed time update during update.
+type UpdateElapsedTickMsg struct{}
+
+// ChangelogLoadedMsg signals that changelog content has been loaded.
+type ChangelogLoadedMsg struct {
+	Content string
+	Err     error
+}
+
 // EditorReturnedMsg signals that an external editor process has exited.
 // Used to restore terminal state (mouse support) after returning from vim/etc.
 type EditorReturnedMsg struct {

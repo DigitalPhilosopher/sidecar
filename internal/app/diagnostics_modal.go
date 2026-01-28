@@ -157,7 +157,7 @@ func (m *Model) diagnosticsVersionSection() modal.Section {
 	}, nil)
 }
 
-// diagnosticsUpdateSection renders the update button/status section.
+// diagnosticsUpdateSection renders the update status/hint section.
 func (m *Model) diagnosticsUpdateSection() modal.Section {
 	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
 		// Only show if updates are available
@@ -167,15 +167,6 @@ func (m *Model) diagnosticsUpdateSection() modal.Section {
 
 		var b strings.Builder
 
-		if m.updateInProgress {
-			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-			spinner := spinnerFrames[m.updateSpinnerFrame%len(spinnerFrames)]
-			b.WriteString("\n  ")
-			b.WriteString(styles.StatusInProgress.Render(spinner + " "))
-			b.WriteString("Installing update...")
-			return modal.RenderedSection{Content: b.String()}
-		}
-
 		if m.needsRestart {
 			b.WriteString("\n  ")
 			b.WriteString(styles.StatusCompleted.Render("✓ "))
@@ -184,52 +175,28 @@ func (m *Model) diagnosticsUpdateSection() modal.Section {
 			return modal.RenderedSection{Content: b.String()}
 		}
 
-		// Show Update button
-		isFocused := focusID == "update"
-		isHovered := hoverID == "update"
-		buttonStyle := styles.Button
-		if isFocused {
-			buttonStyle = styles.ButtonFocused
-		} else if isHovered {
-			buttonStyle = styles.ButtonHover
-		}
-
-		label := m.buildUpdateLabel()
+		// Show update available message with hint
 		b.WriteString("\n  ")
-		b.WriteString(buttonStyle.Render(" Update "))
-		b.WriteString("  ")
-		b.WriteString(styles.Muted.Render(label))
-		b.WriteString("  ")
+		b.WriteString(styles.StatusModified.Render("⬆ "))
+
+		// Version comparison
+		if m.updateAvailable != nil {
+			b.WriteString(fmt.Sprintf("Update available: %s → %s",
+				m.updateAvailable.CurrentVersion,
+				m.updateAvailable.LatestVersion))
+		} else if m.tdVersionInfo != nil && m.tdVersionInfo.HasUpdate {
+			b.WriteString(fmt.Sprintf("td update available: %s → %s",
+				m.tdVersionInfo.CurrentVersion,
+				m.tdVersionInfo.LatestVersion))
+		}
+
+		b.WriteString("\n  ")
+		b.WriteString(styles.Muted.Render("  Press "))
 		b.WriteString(styles.KeyHint.Render("u"))
+		b.WriteString(styles.Muted.Render(" to view details and update"))
 
-		if m.updateError != "" {
-			b.WriteString("\n  ")
-			b.WriteString(styles.StatusBlocked.Render("✗ " + m.updateError))
-		}
-
-		return modal.RenderedSection{
-			Content: b.String(),
-			Focusables: []modal.FocusableInfo{{
-				ID:      "update",
-				OffsetX: 2, // matches "  " indent
-				OffsetY: 1, // first newline then button
-				Width:   10,
-				Height:  1,
-			}},
-		}
-	}, func(msg tea.Msg, focusID string) (string, tea.Cmd) {
-		if focusID != "update" {
-			return "", nil
-		}
-		keyMsg, ok := msg.(tea.KeyMsg)
-		if !ok {
-			return "", nil
-		}
-		if keyMsg.String() == "enter" {
-			return "update", nil
-		}
-		return "", nil
-	})
+		return modal.RenderedSection{Content: b.String()}
+	}, nil)
 }
 
 // diagnosticsErrorSection renders the last error section if present.
