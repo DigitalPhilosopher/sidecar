@@ -2,6 +2,29 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.52.0] - 2026-01-27
+
+### Features
+
+- **Auto-Update Notifications**: Automatic update checking with in-app notification when new versions are available
+
+### Bug Fixes
+
+- Fix project add modal after refactor bugs
+- Fix pull failing when deleting worktree from inside it
+- Fix scrolling in changelog
+- Fix edit state not restored when tab-switching from edit mode
+- Preserve inline editor state when switching tabs
+- Fix td plugin state not resetting on project switch
+- Fix project add modal path input not accepting keyboard input
+
+### Improvements
+
+- Faster scrolling performance
+- Better full refresh on project switch
+- Improved td first-run experience with system detection
+- Refactored update modal to use declarative modal library
+
 ## [v0.51.0] - 2026-01-27
 
 ### Bug Fixes
