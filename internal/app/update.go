@@ -400,6 +400,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.changelogVisible {
 				// Close changelog overlay, return to preview
 				m.changelogVisible = false
+				m.changelogScrollOffset = 0
+				m.clearChangelogModal()
 				return m, nil
 			}
 			// Close update modal
