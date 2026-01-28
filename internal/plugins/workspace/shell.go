@@ -198,11 +198,14 @@ func (p *Plugin) initShellSessions() {
 	if p.shellManifest != nil {
 		for _, def := range p.shellManifest.Shells {
 			isRunning := tmuxMap[def.TmuxName]
+			if !isRunning {
+				// Tmux session is dead - remove stale entry from manifest
+				_ = p.shellManifest.RemoveShell(def.TmuxName)
+				continue
+			}
 			shell := p.shellFromDefinition(def, isRunning)
 			p.shells = append(p.shells, shell)
-			if isRunning {
-				p.managedSessions[def.TmuxName] = true
-			}
+			p.managedSessions[def.TmuxName] = true
 			delete(tmuxMap, def.TmuxName)
 		}
 	}
