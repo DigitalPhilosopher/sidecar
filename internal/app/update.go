@@ -879,23 +879,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Confirm selection and close
 			if m.themeSwitcherSelectedIdx >= 0 && m.themeSwitcherSelectedIdx < len(themes) {
 				selectedTheme := themes[m.themeSwitcherSelectedIdx]
-				scope := m.themeSwitcherScope
-				m.resetThemeSwitcher()
-				m.updateContext()
-				// Persist to config based on scope
 				tc := config.ThemeConfig{Name: selectedTheme}
-				if err := m.saveThemeForScope(tc); err != nil {
-					return m, func() tea.Msg {
-						return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
-					}
-				}
-				toastMsg := "Theme: " + selectedTheme + " (global)"
-				if scope == "project" {
-					toastMsg = "Theme: " + selectedTheme + " (project)"
-				}
-				return m, func() tea.Msg {
-					return ToastMsg{Message: toastMsg, Duration: 2 * time.Second}
-				}
+				return m, m.confirmThemeSelection(tc, selectedTheme)
 			}
 			return m, nil
 
@@ -1420,6 +1405,34 @@ func (m *Model) handleProjectSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd
 		m.projectSwitcherMouseHandler = mouse.NewHandler()
 	}
 
+	// Handle scroll wheel for project list navigation
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.projectSwitcherCursor--
+		if m.projectSwitcherCursor < 0 {
+			m.projectSwitcherCursor = 0
+		}
+		m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(
+			m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
+		m.clearProjectSwitcherModal()
+		m.previewProjectTheme()
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		projects := m.projectSwitcherFiltered
+		m.projectSwitcherCursor++
+		if m.projectSwitcherCursor >= len(projects) {
+			m.projectSwitcherCursor = len(projects) - 1
+		}
+		if m.projectSwitcherCursor < 0 {
+			m.projectSwitcherCursor = 0
+		}
+		m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(
+			m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
+		m.clearProjectSwitcherModal()
+		m.previewProjectTheme()
+		return m, nil
+	}
+
 	action := m.projectSwitcherModal.HandleMouse(msg, m.projectSwitcherMouseHandler)
 
 	// Check if action is a project item click
@@ -1474,18 +1487,8 @@ func (m *Model) handleThemeSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		if m.themeSwitcherSelectedIdx >= 0 && m.themeSwitcherSelectedIdx < len(themes) {
 			selectedTheme := themes[m.themeSwitcherSelectedIdx]
 			m.applyThemeFromConfig(selectedTheme)
-			m.resetThemeSwitcher()
-			m.updateContext()
-			// Persist to config based on scope
 			tc := config.ThemeConfig{Name: selectedTheme}
-			if err := m.saveThemeForScope(tc); err != nil {
-				return m, func() tea.Msg {
-					return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
-				}
-			}
-			return m, func() tea.Msg {
-				return ToastMsg{Message: "Theme: " + selectedTheme, Duration: 2 * time.Second}
-			}
+			return m, m.confirmThemeSelection(tc, selectedTheme)
 		}
 	}
 	return m, nil
@@ -1938,29 +1941,12 @@ func (m *Model) handleCommunityBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			selectedName := schemes[m.communityBrowserCursor]
 			scheme := community.GetScheme(selectedName)
 			if scheme != nil {
-				// Apply immediately for visual effect
 				theme.ApplyResolved(theme.ResolvedTheme{
 					BaseName:      "default",
 					CommunityName: selectedName,
 				})
-				scope := m.themeSwitcherScope
-				m.resetCommunityBrowser()
-				m.resetThemeSwitcher()
-				m.updateContext()
-				// Persist based on scope
 				tc := config.ThemeConfig{Name: "default", Community: selectedName}
-				if err := m.saveThemeForScope(tc); err != nil {
-					return m, func() tea.Msg {
-						return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
-					}
-				}
-				scopeLabel := "global"
-				if scope == "project" {
-					scopeLabel = "project"
-				}
-				return m, func() tea.Msg {
-					return ToastMsg{Message: "Theme: " + selectedName + " (" + scopeLabel + ")", Duration: 2 * time.Second}
-				}
+				return m, m.confirmThemeSelection(tc, selectedName)
 			}
 		}
 		return m, nil
@@ -2107,23 +2093,8 @@ func (m *Model) handleCommunityBrowserMouse(msg tea.MouseMsg) (tea.Model, tea.Cm
 								BaseName:      "default",
 								CommunityName: selectedName,
 							})
-							scope := m.themeSwitcherScope
-							m.resetCommunityBrowser()
-							m.resetThemeSwitcher()
-							m.updateContext()
 							tc := config.ThemeConfig{Name: "default", Community: selectedName}
-							if err := m.saveThemeForScope(tc); err != nil {
-								return m, func() tea.Msg {
-									return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
-								}
-							}
-							scopeLabel := "global"
-							if scope == "project" {
-								scopeLabel = "project"
-							}
-							return m, func() tea.Msg {
-								return ToastMsg{Message: "Theme: " + selectedName + " (" + scopeLabel + ")", Duration: 2 * time.Second}
-							}
+							return m, m.confirmThemeSelection(tc, selectedName)
 						}
 					}
 				case tea.MouseActionMotion:

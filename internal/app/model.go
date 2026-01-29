@@ -802,11 +802,42 @@ func (m *Model) currentProjectConfig() *config.ProjectConfig {
 	return nil
 }
 
-// saveThemeForScope saves a ThemeConfig based on the current scope setting.
-// When saving to project scope from a worktree, uses the main repo path.
-func (m *Model) saveThemeForScope(tc config.ThemeConfig) error {
-	if m.themeSwitcherScope == "project" {
-		// Use the project path, which may be the main worktree if we're in a worktree
+// confirmThemeSelection saves the theme, reloads config, resets all theme
+// switcher state, and returns a toast command. displayName is used in the toast.
+func (m *Model) confirmThemeSelection(tc config.ThemeConfig, displayName string) tea.Cmd {
+	scope := m.themeSwitcherScope
+
+	// Save before reset clears scope
+	if err := m.saveTheme(tc, scope); err != nil {
+		m.resetCommunityBrowser()
+		m.resetThemeSwitcher()
+		m.updateContext()
+		return func() tea.Msg {
+			return ToastMsg{Message: "Theme applied (save failed)", Duration: 3 * time.Second, IsError: true}
+		}
+	}
+	if cfg, err := config.Load(); err == nil {
+		m.cfg = cfg
+	}
+
+	m.resetCommunityBrowser()
+	m.resetThemeSwitcher()
+	m.updateContext()
+
+	toastMsg := "Theme: " + displayName
+	if scope == "project" {
+		toastMsg += " (project)"
+	} else {
+		toastMsg += " (global)"
+	}
+	return func() tea.Msg {
+		return ToastMsg{Message: toastMsg, Duration: 2 * time.Second}
+	}
+}
+
+// saveTheme persists a ThemeConfig based on scope.
+func (m *Model) saveTheme(tc config.ThemeConfig, scope string) error {
+	if scope == "project" {
 		projectPath := m.ui.WorkDir
 		if pc := m.currentProjectConfig(); pc != nil {
 			projectPath = pc.Path
