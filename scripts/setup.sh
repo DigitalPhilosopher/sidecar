@@ -265,7 +265,7 @@ get_go_version() {
 }
 
 get_td_version() {
-    local td_bin
+    local td_bin=""
     # Check PATH first, then check go bin directory directly
     if command -v td &> /dev/null; then
         td_bin="td"
@@ -290,7 +290,7 @@ get_td_version() {
 }
 
 get_sidecar_version() {
-    local sidecar_bin
+    local sidecar_bin=""
     # Check PATH first, then check go bin directory directly
     if command -v sidecar &> /dev/null; then
         sidecar_bin="sidecar"
