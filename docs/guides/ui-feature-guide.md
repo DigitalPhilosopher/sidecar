@@ -442,6 +442,59 @@ TD Monitor uses dynamic shortcut export—TD is the single source of truth. See 
 - Press `?` to verify the command palette shows your bindings.
 - Check footer hints in each context and at narrow widths.
 
+## Scrollbar (internal/ui)
+
+### RenderScrollbar Component
+
+A 1-column vertical scrollbar track rendered alongside scrollable content. When all items fit the viewport, renders a spacer column (single spaces) to prevent layout jitter on resize.
+
+### API
+
+```go
+ui.RenderScrollbar(ui.ScrollbarParams{
+    TotalItems:   int, // Total logical items in the list
+    ScrollOffset: int, // Index of first visible item
+    VisibleItems: int, // Number of items that fit in the viewport
+    TrackHeight:  int, // Height in terminal rows (usually == visible area height)
+})
+```
+
+### Usage pattern
+
+1. Reduce content width by 1 to reserve scrollbar space.
+2. Render your content at the reduced width.
+3. Call `ui.RenderScrollbar(...)` with current scroll state.
+4. Join horizontally:
+
+```go
+contentWidth := width - 1
+content := renderItems(contentWidth, height)
+scrollbar := ui.RenderScrollbar(ui.ScrollbarParams{
+    TotalItems:   len(items),
+    ScrollOffset: p.scrollOffset,
+    VisibleItems: visibleCount,
+    TrackHeight:  height,
+})
+return lipgloss.JoinHorizontal(lipgloss.Top, content, scrollbar)
+```
+
+### Multi-line items
+
+When each item renders as multiple terminal rows, set `TrackHeight` to the actual terminal row count, not the item count:
+
+```go
+TrackHeight: visibleCount * linesPerItem
+```
+
+### Characters and theming
+
+| Element | Character | Theme key | Default |
+|---------|-----------|-----------|---------|
+| Track | `│` (U+2502) | `scrollbarTrack` | `TextSubtle` |
+| Thumb | `┃` (U+2503) | `scrollbarThumb` | `TextMuted` |
+
+Theme keys are optional overrides via `styles.ScrollbarTrackColor` and `styles.ScrollbarThumbColor`.
+
 ## Mouse support
 
 ### Coordinate system

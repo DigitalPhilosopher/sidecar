@@ -292,13 +292,14 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 		p.mouseHandler.HitMap.AddRect(regionShellsPlusButton, shellsPlusBtnX, currentY, shellsPlusBtnWidth, 1, nil)
 		currentY++
 
-		// Render each shell entry
+		// Render each shell entry (width-1 to match worktree items, leaving room for scrollbar)
+		shellItemWidth := width - 1
 		for i, shell := range p.shells {
 			selected := p.shellSelected && i == p.selectedShellIdx
-			shellLine := p.renderShellEntryForSession(shell, selected, width)
+			shellLine := p.renderShellEntryForSession(shell, selected, shellItemWidth)
 			lines = append(lines, shellLine)
 			// Register hit region with negative index: -1 -> shells[0], -2 -> shells[1], etc.
-			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, -(i + 1))
+			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, shellItemWidth, itemHeight, -(i + 1))
 			currentY += itemHeight
 		}
 
@@ -387,7 +388,7 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 			line := p.renderWorktreeItem(wt, selected, worktreeItemWidth)
 
 			// Register hit region with ABSOLUTE index
-			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, i)
+			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, worktreeItemWidth, itemHeight, i)
 
 			worktreeLines = append(worktreeLines, line)
 			currentY += itemHeight

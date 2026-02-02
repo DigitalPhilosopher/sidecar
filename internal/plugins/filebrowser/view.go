@@ -272,8 +272,8 @@ func (p *Plugin) renderNormalPanes() string {
 		}
 		for i := p.treeScrollOff; i < end; i++ {
 			itemY := treeItemY + (i - p.treeScrollOff)
-			// Register region: x=1 (inside border), width=treeWidth-2, height=1, data=tree index
-			p.mouseHandler.HitMap.AddRect(regionTreeItem, 1, itemY, p.treeWidth-2, 1, i)
+			// Register region: x=1 (inside border), width=treeWidth-3 (exclude scrollbar), height=1, data=tree index
+			p.mouseHandler.HitMap.AddRect(regionTreeItem, 1, itemY, p.treeWidth-3, 1, i)
 		}
 	}
 
