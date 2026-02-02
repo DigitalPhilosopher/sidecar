@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 // dividerWidth is the width of the draggable divider between panes.
@@ -154,34 +155,48 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 			filesHeight = 3
 		}
 
-		// Render file sections
+		// Render file sections into separate builder for scrollbar joining
+		var filesSB strings.Builder
 		lineNum := 0
 		globalIdx := 0
 
 		// Staged section
 		if len(p.tree.Staged) > 0 && lineNum < filesHeight {
-			sb.WriteString(p.renderSidebarSection("Staged", p.tree.Staged, &lineNum, &globalIdx, filesHeight, &currentY))
+			filesSB.WriteString(p.renderSidebarSection("Staged", p.tree.Staged, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
 
 		// Modified section
 		if len(p.tree.Modified) > 0 && lineNum < filesHeight {
 			if len(p.tree.Staged) > 0 {
-				sb.WriteString("\n")
+				filesSB.WriteString("\n")
 				lineNum++
 				currentY++
 			}
-			sb.WriteString(p.renderSidebarSection("Modified", p.tree.Modified, &lineNum, &globalIdx, filesHeight, &currentY))
+			filesSB.WriteString(p.renderSidebarSection("Modified", p.tree.Modified, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
 
 		// Untracked section
 		if len(p.tree.Untracked) > 0 && lineNum < filesHeight {
 			if len(p.tree.Staged) > 0 || len(p.tree.Modified) > 0 {
-				sb.WriteString("\n")
+				filesSB.WriteString("\n")
 				lineNum++
 				currentY++
 			}
-			sb.WriteString(p.renderSidebarSection("Untracked", p.tree.Untracked, &lineNum, &globalIdx, filesHeight, &currentY))
+			filesSB.WriteString(p.renderSidebarSection("Untracked", p.tree.Untracked, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
+
+		// Render scrollbar alongside files section
+		filesContent := strings.TrimRight(filesSB.String(), "\n")
+		filesVisibleLines := lineNum
+		scrollbar := ui.RenderScrollbar(ui.ScrollbarParams{
+			TotalItems:   len(entries),
+			ScrollOffset: p.scrollOff,
+			VisibleItems: filesVisibleLines,
+			TrackHeight:  filesVisibleLines,
+		})
+		filesWithScrollbar := lipgloss.JoinHorizontal(lipgloss.Top, filesContent, scrollbar)
+		sb.WriteString(filesWithScrollbar)
+		sb.WriteString("\n")
 	}
 
 	// Separator
@@ -270,8 +285,8 @@ func (p *Plugin) renderSidebarSection(title string, entries []*FileEntry, lineNu
 	*lineNum++
 	*currentY++
 
-	// Available width for file names
-	maxWidth := p.sidebarWidth - 6 // Account for padding and cursor
+	// Available width for file names (-1 for scrollbar column)
+	maxWidth := p.sidebarWidth - 7 // Account for padding, cursor, and scrollbar
 
 	for _, entry := range entries {
 		if *lineNum >= maxLines {
