@@ -1257,7 +1257,10 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 		// Continue to next step based on current step
 		switch p.mergeState.Step {
 		case MergeStepReviewDiff:
-			// User reviewed diff, proceed to merge method selection
+			// User reviewed diff, proceed to target branch selection
+			return p.advanceMergeStep()
+		case MergeStepTargetBranch:
+			// User selected target branch, proceed to merge method
 			return p.advanceMergeStep()
 		case MergeStepMergeMethod:
 			// User selected merge method, proceed
@@ -1275,7 +1278,12 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case "up", "k":
-		if p.mergeState.Step == MergeStepMergeMethod {
+		if p.mergeState.Step == MergeStepTargetBranch {
+			if p.mergeState.TargetBranchOption > 0 {
+				p.mergeState.TargetBranchOption--
+				p.clearMergeModal()
+			}
+		} else if p.mergeState.Step == MergeStepMergeMethod {
 			// Select PR workflow (option 0)
 			p.mergeState.MergeMethodOption = 0
 			p.clearMergeModal() // Rebuild with new selection
@@ -1285,7 +1293,12 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case "down", "j":
-		if p.mergeState.Step == MergeStepMergeMethod {
+		if p.mergeState.Step == MergeStepTargetBranch {
+			if p.mergeState.TargetBranchOption < len(p.mergeState.TargetBranches)-1 {
+				p.mergeState.TargetBranchOption++
+				p.clearMergeModal()
+			}
+		} else if p.mergeState.Step == MergeStepMergeMethod {
 			// Select direct merge (option 1)
 			p.mergeState.MergeMethodOption = 1
 			p.clearMergeModal() // Rebuild with new selection

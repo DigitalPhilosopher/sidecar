@@ -74,6 +74,8 @@ const (
 	mergeConfirmBranchID   = "merge-confirm-branch"
 	mergeConfirmRemoteID   = "merge-confirm-remote"
 	mergeConfirmPullID     = "merge-confirm-pull"
+	mergeTargetListID      = "merge-target-list"
+	mergeTargetActionID    = "merge-target-action"
 	mergeCleanUpButtonID   = "merge-cleanup-btn"
 	mergeSkipButtonID      = "merge-skip-btn"
 

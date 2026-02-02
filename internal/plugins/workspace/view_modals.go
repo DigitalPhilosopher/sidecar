@@ -569,6 +569,8 @@ func (p *Plugin) ensureMergeModal() {
 	// Determine primary action based on current step
 	var primaryAction string
 	switch p.mergeState.Step {
+	case MergeStepTargetBranch:
+		primaryAction = mergeTargetActionID
 	case MergeStepMergeMethod:
 		primaryAction = mergeMethodActionID
 	case MergeStepPostMergeConfirmation:
@@ -600,6 +602,29 @@ func (p *Plugin) ensureMergeModal() {
 		m.AddSection(modal.Spacer())
 		m.AddSection(modal.Text(dimText("Press Enter to continue, Esc to cancel")))
 
+	case MergeStepTargetBranch:
+		m.AddSection(modal.Text(lipgloss.NewStyle().Bold(true).Render("Target Branch:")))
+		m.AddSection(modal.Spacer())
+		if len(p.mergeState.TargetBranches) > 0 {
+			items := make([]modal.ListItem, len(p.mergeState.TargetBranches))
+			for i, b := range p.mergeState.TargetBranches {
+				label := b
+				if i == 0 {
+					label = b + " (default)"
+				}
+				items[i] = modal.ListItem{ID: "branch-" + b, Label: label}
+			}
+			maxVis := len(items)
+			if maxVis > 8 {
+				maxVis = 8
+			}
+			m.AddSection(modal.List(mergeTargetListID, items, &p.mergeState.TargetBranchOption, modal.WithMaxVisible(maxVis)))
+		} else {
+			m.AddSection(modal.Text("Loading branches..."))
+		}
+		m.AddSection(modal.Spacer())
+		m.AddSection(modal.Text(dimText("↑/↓: select   Enter: continue   Esc: cancel")))
+
 	case MergeStepMergeMethod:
 		m.AddSection(modal.Text(lipgloss.NewStyle().Bold(true).Render("Choose Merge Method:")))
 		m.AddSection(modal.Spacer())
@@ -614,10 +639,9 @@ func (p *Plugin) ensureMergeModal() {
 		m.AddSection(modal.Text(dimText("↑/↓: select   Enter: continue   Esc: cancel")))
 
 	case MergeStepDirectMerge:
-		baseBranch := resolveBaseBranch(p.mergeState.Worktree)
 		m.AddSection(modal.Text("Merging directly to base branch..."))
 		m.AddSection(modal.Spacer())
-		m.AddSection(modal.Text(dimText(fmt.Sprintf("Merging '%s' into '%s'...", p.mergeState.Worktree.Branch, baseBranch))))
+		m.AddSection(modal.Text(dimText(fmt.Sprintf("Merging '%s' into '%s'...", p.mergeState.Worktree.Branch, p.mergeState.TargetBranch))))
 
 	case MergeStepPush:
 		m.AddSection(modal.Text("Pushing branch to remote..."))
@@ -648,12 +672,11 @@ func (p *Plugin) ensureMergeModal() {
 		}, nil))
 		m.AddSection(modal.Spacer())
 		m.AddSection(modal.Text(lipgloss.NewStyle().Bold(true).Render("Sync Local Branch")))
-		baseBranch := resolveBaseBranch(p.mergeState.Worktree)
-		m.AddSection(modal.Checkbox(mergeConfirmPullID, fmt.Sprintf("Update local '%s' from remote", baseBranch), &p.mergeState.PullAfterMerge))
+		m.AddSection(modal.Checkbox(mergeConfirmPullID, fmt.Sprintf("Update local '%s' from remote", p.mergeState.TargetBranch), &p.mergeState.PullAfterMerge))
 		if p.mergeState.CurrentBranch != "" {
 			m.AddSection(modal.Text(dimText(fmt.Sprintf("  Current branch: %s", p.mergeState.CurrentBranch))))
 		} else {
-			m.AddSection(modal.Text(dimText(fmt.Sprintf("  Updates local %s to include merged PR", baseBranch))))
+			m.AddSection(modal.Text(dimText(fmt.Sprintf("  Updates local %s to include merged PR", p.mergeState.TargetBranch))))
 		}
 		m.AddSection(modal.Spacer())
 		m.AddSection(modal.Buttons(
@@ -707,6 +730,7 @@ func (p *Plugin) mergeProgressSection() modal.Section {
 		if p.mergeState.UseDirectMerge {
 			steps = []MergeWorkflowStep{
 				MergeStepReviewDiff,
+				MergeStepTargetBranch,
 				MergeStepMergeMethod,
 				MergeStepDirectMerge,
 				MergeStepPostMergeConfirmation,
@@ -715,6 +739,7 @@ func (p *Plugin) mergeProgressSection() modal.Section {
 		} else {
 			steps = []MergeWorkflowStep{
 				MergeStepReviewDiff,
+				MergeStepTargetBranch,
 				MergeStepMergeMethod,
 				MergeStepPush,
 				MergeStepCreatePR,
@@ -802,13 +827,12 @@ func (p *Plugin) mergeMethodHintsSection() modal.Section {
 			return modal.RenderedSection{}
 		}
 
-		baseBranch := resolveBaseBranch(p.mergeState.Worktree)
 		var sb strings.Builder
 
 		if p.mergeState.MergeMethodOption == 0 {
 			sb.WriteString(dimText("Push to origin and create a GitHub PR for review"))
 		} else {
-			sb.WriteString(dimText(fmt.Sprintf("Merge directly to '%s' without PR", baseBranch)))
+			sb.WriteString(dimText(fmt.Sprintf("Merge directly to '%s' without PR", p.mergeState.TargetBranch)))
 			sb.WriteString("\n")
 			sb.WriteString(lipgloss.NewStyle().Foreground(styles.Warning).Render("Warning: Bypasses code review"))
 		}

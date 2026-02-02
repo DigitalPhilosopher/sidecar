@@ -997,6 +997,21 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			p.cachedTaskFetched = time.Now()
 		}
 
+	case LocalBranchesMsg:
+		if p.mergeState != nil && msg.Err == nil {
+			// Put resolved base branch first, then others
+			target := p.mergeState.TargetBranch
+			branches := []string{target}
+			for _, b := range msg.Branches {
+				if b != target {
+					branches = append(branches, b)
+				}
+			}
+			p.mergeState.TargetBranches = branches
+			p.mergeState.TargetBranchOption = 0 // Default to resolved base branch
+			p.mergeModal = nil                   // Force modal rebuild
+		}
+
 	case UncommittedChangesCheckMsg:
 		if msg.Err != nil {
 			// Error checking changes - cancel merge and return to list

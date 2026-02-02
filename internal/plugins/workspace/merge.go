@@ -18,8 +18,9 @@ import (
 type MergeWorkflowStep int
 
 const (
-	MergeStepReviewDiff MergeWorkflowStep = iota
-	MergeStepMergeMethod                  // Choose: PR workflow or direct merge
+	MergeStepReviewDiff  MergeWorkflowStep = iota
+	MergeStepTargetBranch                  // Choose target branch for merge/PR
+	MergeStepMergeMethod                   // Choose: PR workflow or direct merge
 	MergeStepPush
 	MergeStepCreatePR
 	MergeStepWaitingMerge
@@ -35,6 +36,8 @@ func (s MergeWorkflowStep) String() string {
 	switch s {
 	case MergeStepReviewDiff:
 		return "Review Diff"
+	case MergeStepTargetBranch:
+		return "Target Branch"
 	case MergeStepMergeMethod:
 		return "Merge Method"
 	case MergeStepPush:
@@ -73,6 +76,11 @@ type MergeWorkflowState struct {
 	ErrorFromStep    MergeWorkflowStep // Which step produced the error
 	StepStatus       map[MergeWorkflowStep]string // "pending", "running", "done", "error", "skipped"
 	DeleteAfterMerge bool                         // true = delete worktree after merge (default)
+
+	// Target branch selection
+	TargetBranch       string   // Resolved target branch for merge/PR
+	TargetBranchOption int      // Selected index in branch list
+	TargetBranches     []string // Available branches for selection
 
 	// Merge method selection
 	UseDirectMerge    bool // true = direct merge to base, false = PR workflow
@@ -270,6 +278,7 @@ func (p *Plugin) proceedToMergeWorkflow(wt *Worktree) tea.Cmd {
 		CurrentBranch:    currentBranch,
 	}
 	p.mergeState.StepStatus[MergeStepReviewDiff] = "running"
+	p.mergeState.TargetBranch = resolveBaseBranch(wt)
 
 	p.viewMode = ViewModeMerge
 
@@ -358,15 +367,13 @@ func parseExistingPRURL(output string) (string, bool) {
 }
 
 // createPR creates a pull request using gh CLI.
-func (p *Plugin) createPR(wt *Worktree, title, body string) tea.Cmd {
+func (p *Plugin) createPR(wt *Worktree, title, body, targetBranch string) tea.Cmd {
 	return func() tea.Msg {
-		baseBranch := resolveBaseBranch(wt)
-
 		// Build gh pr create command
 		args := []string{"pr", "create",
 			"--title", title,
 			"--body", body,
-			"--base", baseBranch,
+			"--base", targetBranch,
 		}
 
 		cmd := exec.Command("gh", args...)
@@ -437,9 +444,9 @@ func (p *Plugin) checkPRMerged(wt *Worktree) tea.Cmd {
 }
 
 // performDirectMerge merges the branch directly to base without creating a PR.
-func (p *Plugin) performDirectMerge(wt *Worktree) tea.Cmd {
+func (p *Plugin) performDirectMerge(wt *Worktree, targetBranch string) tea.Cmd {
 	return func() tea.Msg {
-		baseBranch := resolveBaseBranch(wt)
+		baseBranch := targetBranch
 		workDir := p.ctx.WorkDir
 		branch := wt.Branch
 
@@ -866,6 +873,32 @@ type checkPRMergeMsg struct {
 	WorkspaceName string
 }
 
+// LocalBranchesMsg returns available local branches for target selection.
+type LocalBranchesMsg struct {
+	Branches []string
+	Err      error
+}
+
+// loadLocalBranches fetches local branch names for the target branch picker.
+func (p *Plugin) loadLocalBranches(wt *Worktree) tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("git", "branch", "--list", "--format=%(refname:short)")
+		cmd.Dir = wt.Path
+		output, err := cmd.Output()
+		if err != nil {
+			return LocalBranchesMsg{Err: err}
+		}
+		var branches []string
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && line != wt.Branch {
+				branches = append(branches, line)
+			}
+		}
+		return LocalBranchesMsg{Branches: branches}
+	}
+}
+
 // advanceMergeStep moves to the next step in the merge workflow.
 // It marks the current step as "done" and advances to the next step.
 func (p *Plugin) advanceMergeStep() tea.Cmd {
@@ -875,13 +908,24 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 
 	switch p.mergeState.Step {
 	case MergeStepReviewDiff:
-		// Move to merge method selection step
+		// Move to target branch selection step
 		p.mergeState.StepStatus[MergeStepReviewDiff] = "done"
+		p.mergeState.Step = MergeStepTargetBranch
+		p.mergeState.StepStatus[MergeStepTargetBranch] = "running"
+		// Load local branches for the picker
+		return p.loadLocalBranches(p.mergeState.Worktree)
+
+	case MergeStepTargetBranch:
+		p.mergeState.StepStatus[MergeStepTargetBranch] = "done"
+		// Set target from selection
+		if p.mergeState.TargetBranchOption >= 0 && p.mergeState.TargetBranchOption < len(p.mergeState.TargetBranches) {
+			p.mergeState.TargetBranch = p.mergeState.TargetBranches[p.mergeState.TargetBranchOption]
+		}
 		p.mergeState.Step = MergeStepMergeMethod
 		p.mergeState.StepStatus[MergeStepMergeMethod] = "running"
-		p.mergeState.MergeMethodOption = 0 // Default to PR workflow
+		p.mergeState.MergeMethodOption = 0
 		p.mergeState.UseDirectMerge = false
-		return nil // Wait for user to select merge method
+		return nil
 
 	case MergeStepMergeMethod:
 		// User has selected merge method
@@ -895,7 +939,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 			p.mergeState.StepStatus[MergeStepWaitingMerge] = "skipped"
 			p.mergeState.Step = MergeStepDirectMerge
 			p.mergeState.StepStatus[MergeStepDirectMerge] = "running"
-			return p.performDirectMerge(p.mergeState.Worktree)
+			return p.performDirectMerge(p.mergeState.Worktree, p.mergeState.TargetBranch)
 		}
 
 		// PR workflow path - push first
@@ -913,7 +957,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		p.mergeState.DeleteLocalBranch = true
 		p.mergeState.DeleteRemoteBranch = false // Don't delete remote - wasn't pushed for direct merge
 		// Pull option: default checked if current branch matches base branch
-		p.mergeState.PullAfterMerge = p.mergeState.CurrentBranch == resolveBaseBranch(p.mergeState.Worktree)
+		p.mergeState.PullAfterMerge = p.mergeState.CurrentBranch == p.mergeState.TargetBranch
 		p.mergeState.ConfirmationFocus = 0
 		return nil
 
@@ -930,7 +974,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		if body == "" {
 			body = "Created from worktree manager"
 		}
-		return p.createPR(p.mergeState.Worktree, title, body)
+		return p.createPR(p.mergeState.Worktree, title, body, p.mergeState.TargetBranch)
 
 	case MergeStepCreatePR:
 		// Mark CreatePR as done, move to waiting for merge
@@ -951,7 +995,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		p.mergeState.DeleteLocalBranch = true    // Default: checked
 		p.mergeState.DeleteRemoteBranch = false  // Default: unchecked (safer)
 		// Pull option: default checked if current branch matches base branch
-		p.mergeState.PullAfterMerge = p.mergeState.CurrentBranch == resolveBaseBranch(p.mergeState.Worktree)
+		p.mergeState.PullAfterMerge = p.mergeState.CurrentBranch == p.mergeState.TargetBranch
 		p.mergeState.ConfirmationFocus = 0
 		return nil // Wait for user interaction
 
@@ -996,7 +1040,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 
 		// Pull changes to current branch (in parallel)
 		if p.mergeState.PullAfterMerge {
-			baseBranch := resolveBaseBranch(p.mergeState.Worktree)
+			baseBranch := p.mergeState.TargetBranch
 			cmds = append(cmds, p.pullAfterMerge(p.mergeState.Worktree, baseBranch, p.mergeState.CurrentBranch))
 			pendingOps++
 		}

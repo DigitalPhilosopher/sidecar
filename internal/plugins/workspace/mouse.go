@@ -345,7 +345,7 @@ func (p *Plugin) handleMergeModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.cancelMergeWorkflow()
 		p.clearMergeModal()
 		return nil
-	case mergeMethodActionID, mergeCleanUpButtonID:
+	case mergeMethodActionID, mergeTargetActionID, mergeCleanUpButtonID:
 		// Advance to next step
 		return p.advanceMergeStep()
 	case mergeSkipButtonID:
