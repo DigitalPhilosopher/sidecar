@@ -15,7 +15,6 @@ import (
 	"github.com/marcus/sidecar/internal/community"
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/mouse"
-	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
@@ -118,6 +117,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+			// Check if click is on worktree indicator
+			if start, end, ok := m.getWorktreeIndicatorBounds(); ok && !m.intro.Active && msg.X >= start && msg.X < end {
+				worktrees := GetWorktrees(m.ui.WorkDir)
+				if len(worktrees) > 1 {
+					m.showWorktreeSwitcher = true
+					m.activeContext = "worktree-switcher"
+					m.initWorktreeSwitcher()
+					return m, nil
+				}
+			}
+
 			// Check if click is on a tab
 			tabBounds := m.getTabBounds()
 			for i, bounds := range tabBounds {
@@ -182,11 +192,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ToastMsg:
-		m.ShowToast(msg.Message, msg.Duration)
-		m.statusIsError = msg.IsError
-		return m, nil
-
-	case appmsg.ToastMsg:
 		m.ShowToast(msg.Message, msg.Duration)
 		m.statusIsError = msg.IsError
 		return m, nil

@@ -607,6 +607,32 @@ func (m Model) getRepoNameBounds() (start, end int, ok bool) {
 	return start, end, true
 }
 
+// getWorktreeIndicatorBounds returns the X bounds for the worktree indicator in the header.
+func (m Model) getWorktreeIndicatorBounds() (start, end int, ok bool) {
+	wtInfo := m.currentWorktreeInfo()
+	if wtInfo == nil || wtInfo.IsMain {
+		return 0, 0, false
+	}
+
+	branchName := wtInfo.Branch
+	if branchName == "" {
+		branchName = "worktree"
+	}
+
+	// Calculate position: after title + repo name
+	titlePrefix := styles.BarTitle.Render(" Sidecar")
+	start = lipgloss.Width(titlePrefix)
+
+	if m.intro.RepoName != "" {
+		repoSuffix := styles.Subtitle.Render(" / " + m.intro.RepoName)
+		start += lipgloss.Width(repoSuffix)
+	}
+
+	indicator := styles.WorktreeIndicator.Render(" [" + branchName + "]")
+	end = start + lipgloss.Width(indicator)
+	return start, end, true
+}
+
 // renderContent renders the main content area.
 func (m Model) renderContent(width, height int) string {
 	p := m.ActivePlugin()

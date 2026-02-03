@@ -62,6 +62,13 @@ Type to filter the project list. The current project is highlighted in green.
 
 ## Mouse Support
 
+### Header Bar
+
+- **Click the repo name** in the header bar (next to "Sidecar") to open the project switcher
+- **Click the worktree indicator** (e.g., `[feature-branch]`) to open the worktree switcher
+
+### Inside the Switcher Modal
+
 - **Click** on a project to switch to it
 - **Scroll** to navigate the list
 - **Click outside** the modal to close it
