@@ -589,6 +589,8 @@ Examples:
 - **Global scope**: Codex (watches `~/.codex/sessions/`), Warp (watches global SQLite DB)
 - **Project scope**: Claude Code (watches `.claude/projects/<hash>/` per project)
 
+**Note on Path Encoding:** Some AI tools (like Claude Code) encode project paths by replacing special characters with dashes. For example, Claude Code replaces `/`, `.`, and `_` with `-`, so `/Users/foo/github.com/my_project` becomes `-Users-foo-github-com-my-project`. When implementing `Detect()` or `Sessions()` for such tools, match the exact encoding scheme used by the tool. See [anthropics/claude-code#19972](https://github.com/anthropics/claude-code/issues/19972) for known encoding issues.
+
 ### Directory Listing Cache
 
 If your session files are spread across a directory tree (e.g., `YYYY/MM/DD/session.jsonl`), cache the directory walk result with a short TTL:

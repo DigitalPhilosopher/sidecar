@@ -152,8 +152,11 @@ func BenchmarkSessions_50Files(b *testing.B) {
 
 	// Claude Code stores sessions at: ~/.claude/projects/<hash>/<session>.jsonl
 	// The hash is based on the project path: /foo/bar -> -foo-bar
+	// Claude Code replaces "/", ".", and "_" with "-"
 	projectRoot := "/bench/project"
 	projectHash := strings.ReplaceAll(projectRoot, "/", "-")
+	projectHash = strings.ReplaceAll(projectHash, ".", "-")
+	projectHash = strings.ReplaceAll(projectHash, "_", "-")
 	sessionsDir := filepath.Join(tmpDir, projectHash)
 	os.MkdirAll(sessionsDir, 0755)
 

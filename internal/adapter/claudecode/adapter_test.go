@@ -202,6 +202,61 @@ func TestProjectDirPath_AbsolutePath(t *testing.T) {
 	}
 }
 
+func TestProjectDirPath_PathWithDots(t *testing.T) {
+	a := New()
+
+	// Test that dots are also replaced with dashes (issue #96)
+	// Claude Code encodes /home/user/Git/personal/github.com/project as:
+	// -home-user-Git-personal-github-com-project (dots become dashes)
+	path := a.projectDirPath("/home/user/Git/personal/github.com/project")
+
+	// Should contain the hashed path with dots replaced
+	expected := "-home-user-Git-personal-github-com-project"
+	if !containsPath(path, expected) {
+		t.Errorf("path %q should contain %q (dots should be replaced with dashes)", path, expected)
+	}
+
+	// Verify it does NOT contain the original dot
+	if containsPath(path, "github.com") {
+		t.Errorf("path %q should NOT contain 'github.com' (dots should be replaced)", path)
+	}
+}
+
+func TestProjectDirPath_PathWithUnderscores(t *testing.T) {
+	a := New()
+
+	// Test that underscores are also replaced with dashes
+	// See: https://github.com/anthropics/claude-code/issues/21085
+	// Claude Code encodes /home/user/my_project/sub_dir as:
+	// -home-user-my-project-sub-dir (underscores become dashes)
+	path := a.projectDirPath("/home/user/my_project/sub_dir")
+
+	// Should contain the hashed path with underscores replaced
+	expected := "-home-user-my-project-sub-dir"
+	if !containsPath(path, expected) {
+		t.Errorf("path %q should contain %q (underscores should be replaced with dashes)", path, expected)
+	}
+
+	// Verify it does NOT contain the original underscores
+	if containsPath(path, "my_project") || containsPath(path, "sub_dir") {
+		t.Errorf("path %q should NOT contain underscores (should be replaced)", path)
+	}
+}
+
+func TestProjectDirPath_PathWithMixedSpecialChars(t *testing.T) {
+	a := New()
+
+	// Test path with mixed special characters: dots, underscores, and slashes
+	// /home/user/github.com/my_org/my_project.git
+	// -> -home-user-github-com-my-org-my-project-git
+	path := a.projectDirPath("/home/user/github.com/my_org/my_project.git")
+
+	expected := "-home-user-github-com-my-org-my-project-git"
+	if !containsPath(path, expected) {
+		t.Errorf("path %q should contain %q", path, expected)
+	}
+}
+
 func TestDetect_RelativePath(t *testing.T) {
 	a := New()
 

@@ -598,15 +598,19 @@ func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, er
 }
 
 // projectDirPath converts a project root path to the Claude Code projects directory path.
-// Claude Code uses the path with slashes replaced by dashes.
+// Claude Code uses the path with slashes, dots, and underscores replaced by dashes.
+// See: https://github.com/anthropics/claude-code/issues/19972
 func (a *Adapter) projectDirPath(projectRoot string) string {
 	// Ensure absolute path for consistent hashing
 	absPath, err := filepath.Abs(projectRoot)
 	if err != nil {
 		absPath = projectRoot
 	}
-	// Convert /Users/foo/code/project to -Users-foo-code-project
+	// Convert /Users/foo/code/github.com/my_project to -Users-foo-code-github-com-my-project
+	// Claude Code replaces "/", ".", and "_" with "-"
 	hash := strings.ReplaceAll(absPath, "/", "-")
+	hash = strings.ReplaceAll(hash, ".", "-")
+	hash = strings.ReplaceAll(hash, "_", "-")
 	return filepath.Join(a.projectsDir, hash)
 }
 
@@ -636,8 +640,12 @@ func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string,
 
 	var related []string
 	// Encode the main path to find its pattern in directory names
-	// e.g., /Users/foo/code/myrepo -> -Users-foo-code-myrepo
+	// e.g., /Users/foo/code/github.com/my_repo -> -Users-foo-code-github-com-my-repo
+	// Claude Code replaces "/", ".", and "_" with "-"
+	// See: https://github.com/anthropics/claude-code/issues/19972
 	encodedMain := strings.ReplaceAll(absMain, "/", "-")
+	encodedMain = strings.ReplaceAll(encodedMain, ".", "-")
+	encodedMain = strings.ReplaceAll(encodedMain, "_", "-")
 
 	for _, e := range entries {
 		if !e.IsDir() {
