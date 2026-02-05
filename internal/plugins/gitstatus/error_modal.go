@@ -45,15 +45,20 @@ func (p *Plugin) ensureErrorModal() {
 	}
 	p.errorModalWidth = modalW
 	p.errorModalHeight = p.height
+	// Build button list — offer Pull when push was rejected due to remote ahead
+	var btns []modal.ButtonDef
+	if p.errorOfferPull {
+		btns = append(btns, modal.Btn(" Pull ", "pull"))
+	}
+	btns = append(btns, modal.Btn(" Dismiss ", "dismiss"))
+
 	p.errorModal = modal.New(p.errorTitle,
 		modal.WithWidth(modalW),
 		modal.WithVariant(modal.VariantDanger),
 	).
 		AddSection(modal.Text(p.errorDetail)).
 		AddSection(modal.Spacer()).
-		AddSection(modal.Buttons(
-			modal.Btn(" Dismiss ", "dismiss"),
-		))
+		AddSection(modal.Buttons(btns...))
 }
 
 // renderErrorModal renders the error modal overlaid on the status view.
@@ -76,13 +81,21 @@ func (p *Plugin) updateErrorModal(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
+	// Pull shortcut from error modal
+	if msg.String() == "L" && p.errorOfferPull {
+		return p.errorModalToPullMenu()
+	}
+
 	// Intercept yank before delegating to modal key handler
 	if msg.String() == "y" {
 		return p, p.yankErrorToClipboard()
 	}
 
 	action, cmd := p.errorModal.HandleKey(msg)
-	if action == "dismiss" || action == "cancel" {
+	switch action {
+	case "pull":
+		return p.errorModalToPullMenu()
+	case "dismiss", "cancel":
 		return p.dismissErrorModal()
 	}
 	return p, cmd
@@ -95,7 +108,10 @@ func (p *Plugin) handleErrorModalMouse(m tea.MouseMsg) (plugin.Plugin, tea.Cmd) 
 	}
 
 	action := p.errorModal.HandleMouse(m, p.mouseHandler)
-	if action == "dismiss" || action == "cancel" {
+	switch action {
+	case "pull":
+		return p.errorModalToPullMenu()
+	case "dismiss", "cancel":
 		return p.dismissErrorModal()
 	}
 	return p, nil
@@ -109,9 +125,30 @@ func (p *Plugin) dismissErrorModal() (plugin.Plugin, tea.Cmd) {
 	p.errorModal = nil
 	p.errorModalWidth = 0
 	p.errorModalHeight = 0
+	p.errorOfferPull = false
 	p.pushError = ""
 	p.fetchError = ""
 	p.pullError = ""
+	return p, nil
+}
+
+// errorModalToPullMenu dismisses the error modal and opens the pull menu.
+func (p *Plugin) errorModalToPullMenu() (plugin.Plugin, tea.Cmd) {
+	// Clear error state
+	p.errorTitle = ""
+	p.errorDetail = ""
+	p.errorModal = nil
+	p.errorModalWidth = 0
+	p.errorModalHeight = 0
+	p.pushError = ""
+	p.fetchError = ""
+	p.pullError = ""
+	p.errorOfferPull = false
+	// Open pull menu
+	p.pullMenuReturnMode = ViewModeStatus
+	p.viewMode = ViewModePullMenu
+	p.pullSelectedIdx = 0
+	p.clearPullModal()
 	return p, nil
 }
 

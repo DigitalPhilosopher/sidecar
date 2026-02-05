@@ -157,6 +157,7 @@ type Plugin struct {
 	errorModalHeight int
 	errorTitle       string // e.g. "Push Failed", "Fetch Failed"
 	errorDetail      string // full git command output
+	errorOfferPull   bool   // true when push was rejected due to remote ahead
 
 	// Discard confirm state
 	discardFile       *FileEntry   // File being confirmed for discard
@@ -604,6 +605,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.pushInProgress = false
 		p.pushError = msg.Err.Error()
 		p.pushPreservedCommitHash = "" // Clear stale hash on error
+		if isPushRejectedError(msg.Err) {
+			p.errorOfferPull = true
+		}
 		p.showErrorModal("Push Failed", msg.Err)
 		return p, p.loadRecentCommits()
 
@@ -889,6 +893,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "abort-pull", Name: "Abort", Description: "Abort merge/rebase", Category: plugin.CategoryGit, Context: "git-pull-conflict", Priority: 1},
 		{ID: "dismiss", Name: "Dismiss", Description: "Dismiss and resolve manually", Category: plugin.CategoryNavigation, Context: "git-pull-conflict", Priority: 2},
 		// git-error context (error modal)
+		{ID: "pull-from-error", Name: "Pull", Description: "Pull from remote", Category: plugin.CategoryGit, Context: "git-error", Priority: 1},
 		{ID: "dismiss", Name: "Dismiss", Description: "Dismiss error", Category: plugin.CategoryNavigation, Context: "git-error", Priority: 1},
 		{ID: "yank-error", Name: "Yank", Description: "Copy error to clipboard", Category: plugin.CategoryActions, Context: "git-error", Priority: 2},
 		// git-stash-pop context (stash pop confirmation modal)

@@ -155,6 +155,7 @@ func DefaultBindings() []Binding {
 		{Key: "esc", Command: "close", Context: "issue-preview"},
 
 		// Git error modal context
+		{Key: "L", Command: "pull-from-error", Context: "git-error"},
 		{Key: "y", Command: "yank-error", Context: "git-error"},
 		{Key: "esc", Command: "dismiss", Context: "git-error"},
 

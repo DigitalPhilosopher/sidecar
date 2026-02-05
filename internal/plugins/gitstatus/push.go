@@ -135,6 +135,19 @@ func (e *PushError) Error() string {
 	return strings.TrimSpace(e.Output)
 }
 
+// isPushRejectedError returns true if the push failed because the remote
+// contains commits not present locally (non-fast-forward rejection).
+func isPushRejectedError(err error) bool {
+	var pe *PushError
+	if !errors.As(err, &pe) {
+		return false
+	}
+	lower := strings.ToLower(pe.Output)
+	return strings.Contains(lower, "rejected") ||
+		strings.Contains(lower, "fetch first") ||
+		strings.Contains(lower, "the remote contains work that you do")
+}
+
 // GetRemoteName returns the primary remote name (usually "origin").
 // Returns empty string if no remotes are configured.
 func GetRemoteName(workDir string) string {
