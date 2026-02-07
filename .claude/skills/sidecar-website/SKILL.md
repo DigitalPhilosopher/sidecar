@@ -1,5 +1,5 @@
 ---
-name: dev-docs
+name: sidecar-website
 description: Writing and maintaining the Sidecar Docusaurus documentation site, including page structure, doc authoring, blog posts, styling, images, and deployment workflow. Use when writing documentation, updating the docs site, adding pages or blog posts, or working with Docusaurus configuration.
 ---
 

@@ -269,11 +269,11 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 		return p, nil
 
 	case regionPreviewLine:
+		p.activePane = PanePreview
 		lineIdx, col, ok := p.previewSelectionAtXY(action.X, action.Y)
 		if !ok {
 			return p, nil
 		}
-		p.activePane = PanePreview
 		// Prepare drag tracking with character-level anchor
 		p.selection.PrepareDrag(lineIdx, col, action.Region.Rect)
 		// Start drag tracking for potential drag-select
