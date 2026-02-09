@@ -180,7 +180,7 @@ type Plugin struct {
 	createAgentType       AgentType // Selected agent type (default: AgentClaude)
 	createAgentIdx        int       // Selected agent index in AgentTypeOrder
 	createSkipPermissions bool      // Skip permissions checkbox
-	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create, 7=cancel
+	createFocus           int       // 0=name, 1=base, 2=prompt, 3=hooks, 4=task, 5=agent, 6=skipPerms, 7=create, 8=cancel
 	createButtonHover     int       // 0=none, 1=create, 2=cancel
 	createError           string    // Error message to display in create modal
 	createModal           *modal.Modal
@@ -198,6 +198,11 @@ type Plugin struct {
 	promptPickerModal      *modal.Modal
 	promptPickerModalWidth int
 	promptPickerModalEmpty bool
+
+	// Hook state for create modal
+	createHooks          []Hook // Available hooks (merged global + project)
+	createHookSelections []bool // Which hooks are selected (parallel to createHooks)
+	createHookIdx        int    // Selected hook index for navigation
 
 	// Task search state for create modal
 	taskSearchInput    textinput.Model
@@ -717,6 +722,10 @@ func (p *Plugin) clearCreateModal() {
 	p.createPromptIdx = -1
 	p.promptPicker = nil
 	p.clearPromptPickerModal()
+	// Clear hook state
+	p.createHooks = nil
+	p.createHookSelections = nil
+	p.createHookIdx = 0
 }
 
 func (p *Plugin) clearPromptPickerModal() {
@@ -771,6 +780,11 @@ func (p *Plugin) initCreateModalBase() {
 	p.branchAll = nil
 	p.branchFiltered = nil
 	p.branchIdx = 0
+
+	// Load hooks from global and project config
+	p.createHooks = LoadHooks(configDir, p.ctx.WorkDir)
+	p.createHookSelections = make([]bool, len(p.createHooks))
+	p.createHookIdx = 0
 }
 
 // openCreateModal opens the create worktree modal and initializes all inputs.

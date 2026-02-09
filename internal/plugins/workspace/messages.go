@@ -99,6 +99,7 @@ type CreateDoneMsg struct {
 	AgentType AgentType // Agent selected at creation
 	SkipPerms bool      // Whether to skip permissions
 	Prompt    *Prompt   // Selected prompt template (nil if none)
+	Hooks     []Hook    // Selected post-create hooks
 	Err       error
 }
 

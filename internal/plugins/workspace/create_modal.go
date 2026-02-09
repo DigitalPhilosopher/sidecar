@@ -21,6 +21,8 @@ const (
 	createSubmitID              = "create-submit"
 	createCancelID              = "create-cancel"
 	createBranchItemPrefix      = "create-branch-"
+	createHookFieldID           = "create-hook"
+	createHookItemPrefix        = "create-hook-"
 	createTaskItemPrefix        = "create-task-item-"
 	createAgentItemPrefix       = "create-agent-"
 )
@@ -78,6 +80,8 @@ func (p *Plugin) ensureCreateModal() {
 		AddSection(modal.Spacer()).
 		AddSection(p.createPromptSection()).
 		AddSection(modal.Spacer()).
+		AddSection(p.createHookSection()).
+		AddSection(modal.Spacer()).
 		AddSection(p.createTaskSection()).
 		AddSection(modal.Spacer()).
 		AddSection(p.createAgentLabelSection()).
@@ -101,20 +105,30 @@ func (p *Plugin) syncCreateModalFocus() {
 	p.normalizeCreateFocus()
 	p.syncCreateAgentIdx()
 
+	if p.createFocus == 3 && len(p.createHooks) > 0 {
+		hookID := createIndexedID(createHookItemPrefix, p.createHookIdx)
+		p.createModal.SetFocus(hookID)
+		return
+	}
+
 	if focusID := p.createFocusID(); focusID != "" {
 		p.createModal.SetFocus(focusID)
 	}
 }
 
 func (p *Plugin) normalizeCreateFocus() {
-	if p.createFocus == 3 {
+	// Skip hooks section if no hooks configured
+	if p.createFocus == 3 && len(p.createHooks) == 0 {
+		p.createFocus = 4
+	}
+	if p.createFocus == 4 {
 		prompt := p.getSelectedPrompt()
 		if prompt != nil && prompt.TicketMode == TicketNone {
-			p.createFocus = 4
+			p.createFocus = 5
 		}
 	}
-	if p.createFocus == 5 && !p.shouldShowSkipPermissions() {
-		p.createFocus = 6
+	if p.createFocus == 6 && !p.shouldShowSkipPermissions() {
+		p.createFocus = 7
 	}
 }
 
@@ -137,14 +151,20 @@ func (p *Plugin) createFocusID() string {
 	case 2:
 		return createPromptFieldID
 	case 3:
-		return createTaskFieldID
+		// Hooks section - focus handled via createHookIdx
+		if len(p.createHooks) > 0 {
+			return createIndexedID(createHookItemPrefix, p.createHookIdx)
+		}
+		return createHookFieldID
 	case 4:
-		return createAgentListID // Use list ID for singleFocus mode
+		return createTaskFieldID
 	case 5:
-		return createSkipPermissionsID
+		return createAgentListID // Use list ID for singleFocus mode
 	case 6:
-		return createSubmitID
+		return createSkipPermissionsID
 	case 7:
+		return createSubmitID
+	case 8:
 		return createCancelID
 	default:
 		return ""
@@ -302,6 +322,63 @@ func (p *Plugin) createPromptSection() modal.Section {
 				preview = string(runes[:57]) + "..."
 			}
 			lines = append(lines, dimText(fmt.Sprintf("  Preview: %s", preview)))
+		}
+
+		return modal.RenderedSection{Content: strings.Join(lines, "\n"), Focusables: focusables}
+	}, nil)
+}
+
+func (p *Plugin) createHookSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		lines := make([]string, 0, 4)
+		focusables := make([]modal.FocusableInfo, 0)
+		lineY := 0
+
+		lines = append(lines, "Hooks:")
+		lineY++
+
+		if len(p.createHooks) == 0 {
+			lines = append(lines, dimText("  (none configured)"))
+			return modal.RenderedSection{Content: strings.Join(lines, "\n")}
+		}
+
+		for i, hook := range p.createHooks {
+			checkbox := "[ ]"
+			if p.createHookSelections[i] {
+				checkbox = "[x]"
+			}
+
+			scopeIndicator := "[G]"
+			if hook.Source == "project" {
+				scopeIndicator = "[P]"
+			}
+
+			// Truncate command preview
+			cmdPreview := hook.Command
+			maxCmd := contentWidth - len(hook.Name) - 16
+			if maxCmd < 10 {
+				maxCmd = 10
+			}
+			if len(cmdPreview) > maxCmd {
+				cmdPreview = cmdPreview[:maxCmd-3] + "..."
+			}
+
+			itemID := createIndexedID(createHookItemPrefix, i)
+			label := fmt.Sprintf("  %s %s  %s", checkbox, hook.Name, dimText(scopeIndicator+" "+cmdPreview))
+
+			if focusID == itemID {
+				label = lipgloss.NewStyle().Foreground(styles.Primary).Render(label)
+			}
+
+			lines = append(lines, label)
+			focusables = append(focusables, modal.FocusableInfo{
+				ID:      itemID,
+				OffsetX: 0,
+				OffsetY: lineY,
+				Width:   ansi.StringWidth(label),
+				Height:  1,
+			})
+			lineY++
 		}
 
 		return modal.RenderedSection{Content: strings.Join(lines, "\n"), Focusables: focusables}

@@ -894,7 +894,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleCreateKeys handles keys in create modal.
-// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create button, 7=cancel button
+// createFocus: 0=name, 1=base, 2=prompt, 3=hooks, 4=task, 5=agent, 6=skipPerms, 7=create button, 8=cancel button
 func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	p.ensureCreateModal()
 	if p.createModal == nil {
@@ -910,20 +910,20 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 1) % 8
+		p.createFocus = (p.createFocus + 1) % 9
 		p.normalizeCreateFocus()
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
 	case "shift+tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 7) % 8
+		p.createFocus = (p.createFocus + 8) % 9
 		p.normalizeCreateFocus()
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
 	case "backspace":
-		if p.createFocus == 3 && p.createTaskID != "" {
+		if p.createFocus == 4 && p.createTaskID != "" {
 			p.createTaskID = ""
 			p.createTaskTitle = ""
 			p.taskSearchInput.SetValue("")
@@ -934,7 +934,13 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 	case " ":
-		if p.createFocus == 5 {
+		if p.createFocus == 3 && len(p.createHooks) > 0 {
+			if p.createHookIdx >= 0 && p.createHookIdx < len(p.createHookSelections) {
+				p.createHookSelections[p.createHookIdx] = !p.createHookSelections[p.createHookIdx]
+			}
+			return nil
+		}
+		if p.createFocus == 6 {
 			p.createSkipPermissions = !p.createSkipPermissions
 			return nil
 		}
@@ -945,7 +951,14 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
+		if p.createFocus == 3 && len(p.createHooks) > 0 {
+			if p.createHookIdx > 0 {
+				p.createHookIdx--
+				p.syncCreateModalFocus()
+			}
+			return nil
+		}
+		if p.createFocus == 4 && len(p.taskSearchFiltered) > 0 {
 			if p.taskSearchIdx > 0 {
 				p.taskSearchIdx--
 			}
@@ -958,7 +971,14 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
+		if p.createFocus == 3 && len(p.createHooks) > 0 {
+			if p.createHookIdx < len(p.createHooks)-1 {
+				p.createHookIdx++
+				p.syncCreateModalFocus()
+			}
+			return nil
+		}
+		if p.createFocus == 4 && len(p.taskSearchFiltered) > 0 {
 			if p.taskSearchIdx < len(p.taskSearchFiltered)-1 {
 				p.taskSearchIdx++
 			}
@@ -976,7 +996,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.createTaskID = task.ID
 			p.createTaskTitle = task.Title
 			p.taskSearchInput.Blur()
-			p.createFocus = 4
+			p.createFocus = 5
 			p.syncCreateModalFocus()
 			return nil
 		}
@@ -984,6 +1004,12 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 			p.clearPromptPickerModal()
 			p.viewMode = ViewModePromptPicker
+			return nil
+		}
+		if p.createFocus == 3 && len(p.createHooks) > 0 {
+			if p.createHookIdx >= 0 && p.createHookIdx < len(p.createHookSelections) {
+				p.createHookSelections[p.createHookIdx] = !p.createHookSelections[p.createHookIdx]
+			}
 			return nil
 		}
 		if focusID == createSubmitID {
@@ -1008,19 +1034,19 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.viewMode = ViewModePromptPicker
 			return nil
 		}
-		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
+		if p.createFocus == 4 && len(p.taskSearchFiltered) > 0 {
 			selectedTask := p.taskSearchFiltered[p.taskSearchIdx]
 			p.createTaskID = selectedTask.ID
 			p.createTaskTitle = selectedTask.Title
 			p.taskSearchInput.Blur()
-			p.createFocus = 4
+			p.createFocus = 5
 			p.syncCreateModalFocus()
 			return nil
 		}
-		if p.createFocus == 6 {
+		if p.createFocus == 7 {
 			return p.validateAndCreateWorktree()
 		}
-		if p.createFocus == 7 {
+		if p.createFocus == 8 {
 			p.viewMode = ViewModeList
 			p.clearCreateModal()
 			return nil
@@ -1058,7 +1084,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	case 1:
 		p.branchFiltered = filterBranches(p.createBaseBranchInput.Value(), p.branchAll)
 		p.branchIdx = 0
-	case 3:
+	case 4:
 		if p.createTaskID == "" {
 			p.taskSearchInput, cmd = p.taskSearchInput.Update(msg)
 			p.taskSearchFiltered = filterTasks(p.taskSearchInput.Value(), p.taskSearchAll)
@@ -1117,7 +1143,7 @@ func (p *Plugin) blurCreateInputs() {
 }
 
 // focusCreateInput focuses the appropriate textinput based on createFocus.
-// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=task, 4+=non-inputs
+// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=hooks (no textinput), 4=task, 5+=non-inputs
 func (p *Plugin) focusCreateInput() {
 	switch p.createFocus {
 	case 0:
@@ -1125,7 +1151,8 @@ func (p *Plugin) focusCreateInput() {
 	case 1:
 		p.createBaseBranchInput.Focus()
 	// case 2 is prompt field - no textinput to focus (opens picker on Enter)
-	case 3:
+	// case 3 is hooks field - no textinput to focus (toggle with space/enter)
+	case 4:
 		p.taskSearchInput.Focus()
 	}
 }

@@ -133,12 +133,12 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.syncCreateModalFocus()
 		return nil
 	case createTaskFieldID:
-		p.createFocus = 3
+		p.createFocus = 4
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
 	case createSkipPermissionsID:
-		p.createFocus = 5
+		p.createFocus = 6
 		p.createSkipPermissions = !p.createSkipPermissions
 		p.syncCreateModalFocus()
 		return nil
@@ -151,18 +151,25 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.syncCreateModalFocus()
 		return nil
 	}
+	if idx, ok := parseIndexedID(createHookItemPrefix, action); ok && idx < len(p.createHooks) {
+		p.createFocus = 3
+		p.createHookIdx = idx
+		p.createHookSelections[idx] = !p.createHookSelections[idx]
+		p.syncCreateModalFocus()
+		return nil
+	}
 	if idx, ok := parseIndexedID(createTaskItemPrefix, action); ok && idx < len(p.taskSearchFiltered) {
 		task := p.taskSearchFiltered[idx]
 		p.createTaskID = task.ID
 		p.createTaskTitle = task.Title
-		p.createFocus = 3
+		p.createFocus = 4
 		p.syncCreateModalFocus()
 		return nil
 	}
 	if idx, ok := parseIndexedID(createAgentItemPrefix, action); ok && idx < len(AgentTypeOrder) {
 		p.createAgentIdx = idx
 		p.createAgentType = AgentTypeOrder[idx]
-		p.createFocus = 4
+		p.createFocus = 5
 		p.syncCreateModalFocus()
 		return nil
 	}
@@ -634,7 +641,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 					p.createBaseBranchInput.SetValue(p.branchFiltered[data.idx])
 					p.branchFiltered = nil
 				}
-			case 3:
+			case 4:
 				// Task selection
 				if data.idx >= 0 && data.idx < len(p.taskSearchFiltered) {
 					task := p.taskSearchFiltered[data.idx]
@@ -658,9 +665,9 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		// Click on button
 		if idx, ok := action.Region.Data.(int); ok {
 			switch idx {
-			case 6:
-				return p.createWorktree()
 			case 7:
+				return p.createWorktree()
+			case 8:
 				p.viewMode = ViewModeList
 				p.clearCreateModal()
 			}

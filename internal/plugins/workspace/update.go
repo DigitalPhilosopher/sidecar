@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -192,6 +193,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Load content for preview pane
 			cmds = append(cmds, p.loadSelectedContent())
 
+			// Execute post-create hooks
+			if len(msg.Hooks) > 0 {
+				cmds = append(cmds, p.runPostCreateHooks(msg.Worktree, msg.Hooks))
+			}
+
 			// Start agent or attach based on selection
 			if msg.AgentType != AgentNone && msg.AgentType != "" {
 				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
@@ -199,6 +205,23 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				// "None" selected - attach to worktree directory
 				cmds = append(cmds, p.AttachToWorktreeDir(msg.Worktree))
 			}
+		}
+
+	case HookResultMsg:
+		// Log hook results, show toast for failures
+		var failures []string
+		for _, r := range msg.Results {
+			if r.Err != nil {
+				failures = append(failures, r.Name)
+				p.ctx.Logger.Warn("hook failed", "hook", r.Name, "cmd", r.Command, "output", r.Output, "err", r.Err)
+			} else {
+				p.ctx.Logger.Debug("hook ok", "hook", r.Name)
+			}
+		}
+		if len(failures) > 0 {
+			toastMsg := fmt.Sprintf("Hook failed: %s", strings.Join(failures, ", "))
+			p.toastMessage = toastMsg
+			p.toastTime = time.Now()
 		}
 
 	case PromptSelectedMsg:
@@ -216,13 +239,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			// If ticketMode is none, skip task field and jump to agent
 			if msg.Prompt.TicketMode == TicketNone {
-				p.createFocus = 4 // agent field
+				p.createFocus = 5 // agent field
 			} else {
-				p.createFocus = 3 // task field
+				p.createFocus = 4 // task field
 			}
 		} else {
 			p.createPromptIdx = -1
-			p.createFocus = 3 // task field
+			p.createFocus = 3 // hooks field (next after prompt)
 		}
 
 	case PromptCancelledMsg:

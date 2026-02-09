@@ -235,9 +235,17 @@ func (p *Plugin) createWorktree() tea.Cmd {
 	skipPerms := p.createSkipPermissions
 	prompt := p.getSelectedPrompt()
 
+	// Capture selected hooks
+	var selectedHooks []Hook
+	for i, hook := range p.createHooks {
+		if p.createHookSelections[i] {
+			selectedHooks = append(selectedHooks, hook)
+		}
+	}
+
 	// Debug log to trace taskID flow
 	if p.ctx != nil && p.ctx.Logger != nil {
-		p.ctx.Logger.Debug("createWorktree: captured modal state", "name", name, "taskID", taskID, "taskTitle", taskTitle, "agentType", agentType, "skipPerms", skipPerms, "hasPrompt", prompt != nil)
+		p.ctx.Logger.Debug("createWorktree: captured modal state", "name", name, "taskID", taskID, "taskTitle", taskTitle, "agentType", agentType, "skipPerms", skipPerms, "hasPrompt", prompt != nil, "hooks", len(selectedHooks))
 	}
 
 	if name == "" {
@@ -248,7 +256,7 @@ func (p *Plugin) createWorktree() tea.Cmd {
 
 	return func() tea.Msg {
 		wt, err := p.doCreateWorktree(name, baseBranch, taskID, taskTitle, agentType)
-		return CreateDoneMsg{Worktree: wt, AgentType: agentType, SkipPerms: skipPerms, Prompt: prompt, Err: err}
+		return CreateDoneMsg{Worktree: wt, AgentType: agentType, SkipPerms: skipPerms, Prompt: prompt, Hooks: selectedHooks, Err: err}
 	}
 }
 
