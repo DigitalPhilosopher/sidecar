@@ -335,6 +335,13 @@ func (p *Plugin) renderSidebarPane(height int) string {
 		}
 		if p.searchMode {
 			sb.WriteString(styles.Muted.Render("No matching sessions"))
+		} else if p.filterActive && len(p.filters.Categories) > 0 {
+			// Category filter is hiding all sessions (td-7d13d8)
+			label := strings.Join(p.filters.Categories, "/")
+			line1 := "No " + label + " sessions."
+			line2 := "Press C to show all."
+			msg := styles.Muted.Render(line1) + "\n" + styles.Subtle.Render(line2)
+			sb.WriteString(msg)
 		} else {
 			sb.WriteString(styles.Muted.Render("No sessions"))
 		}
