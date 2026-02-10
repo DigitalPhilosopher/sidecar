@@ -87,7 +87,7 @@ func (p *Plugin) HasPIIInCurrentSession() bool {
 
 // GetPIIWarningForMessage returns a warning indicator if a message contains sensitive PII
 func (p *Plugin) GetPIIWarningForMessage(msgID string) string {
-	if p.piiScanner == nil || !p.piiScanner.IsEnabled() {
+	if p.piiScanner == nil || !p.piiScanner.IsEnabled() || !p.piiShowWarnings {
 		return ""
 	}
 
