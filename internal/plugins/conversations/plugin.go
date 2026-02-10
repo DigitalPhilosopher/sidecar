@@ -173,9 +173,10 @@ type Plugin struct {
 	searchResults []adapter.Session
 
 	// Filter state
-	filterMode   bool
-	filters      SearchFilters
-	filterActive bool // true when any filter is active
+	filterMode             bool
+	filters                SearchFilters
+	filterActive           bool     // true when any filter is active
+	defaultCategoryFilter  []string // from config, used by C toggle to restore
 
 	// Markdown rendering
 	contentRenderer *GlamourRenderer
@@ -372,6 +373,7 @@ func (p *Plugin) resetState() {
 	p.filterMode = false
 	p.filters = SearchFilters{}
 	p.filterActive = false
+	p.defaultCategoryFilter = nil
 
 	// Conversation flow view state
 	p.expandedMessages = make(map[string]bool)
@@ -436,6 +438,18 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	if savedWidth := state.GetConversationsSideWidth(); savedWidth > 0 {
 		p.sidebarWidth = savedWidth
 	}
+
+	// Apply default category filter from config (td-91bbc4)
+	if ctx.Config != nil && len(ctx.Config.Plugins.Conversations.DefaultCategoryFilter) > 0 {
+		p.defaultCategoryFilter = ctx.Config.Plugins.Conversations.DefaultCategoryFilter
+	} else {
+		// Default: show only interactive sessions (hide cron/system)
+		p.defaultCategoryFilter = []string{adapter.SessionCategoryInteractive}
+	}
+	// Apply default filter on startup
+	p.filters.Categories = make([]string, len(p.defaultCategoryFilter))
+	copy(p.filters.Categories, p.defaultCategoryFilter)
+	p.filterActive = p.filters.IsActive()
 
 	p.adapters = make(map[string]adapter.Adapter)
 	for id, a := range ctx.Adapters {
@@ -1113,6 +1127,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "content-search", Name: "Find", Description: "Search content (F)", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
+		{ID: "toggle-category", Name: "Category", Description: "Toggle category filter", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 3},
 		{ID: "resume-in-workspace", Name: "Resume", Description: "Resume in workspace", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-details", Name: "Copy Details", Description: "Copy session details", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-resume", Name: "Copy Resume", Description: "Copy resume command", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},

@@ -1,6 +1,7 @@
 package conversations
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -172,12 +173,43 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Yank resume command to clipboard
 		return p, p.yankResumeCommand()
 
+	case "C":
+		// Quick-toggle category filter (td-91bbc4)
+		return p, p.toggleCategoryFilter()
+
 	case "R":
 		// Open resume modal for workspace
 		return p, p.openResumeModal()
 	}
 
 	return p, nil
+}
+
+// toggleCategoryFilter toggles between default category filter and showing all sessions (td-91bbc4).
+func (p *Plugin) toggleCategoryFilter() tea.Cmd {
+	if len(p.filters.Categories) > 0 {
+		// Currently filtered -> show all
+		p.filters.Categories = nil
+		p.filterActive = p.filters.IsActive()
+		p.cursor = 0
+		p.scrollOff = 0
+		p.hitRegionsDirty = true
+		return appmsg.ShowToast("Showing all sessions", 2*time.Second)
+	}
+	// Currently showing all -> apply default filter
+	defaults := p.defaultCategoryFilter
+	if len(defaults) == 0 {
+		defaults = []string{adapter.SessionCategoryInteractive}
+	}
+	p.filters.Categories = make([]string, len(defaults))
+	copy(p.filters.Categories, defaults)
+	p.filterActive = p.filters.IsActive()
+	p.cursor = 0
+	p.scrollOff = 0
+	p.hitRegionsDirty = true
+	// Build label from active categories
+	label := strings.Join(p.filters.Categories, ", ")
+	return appmsg.ShowToast("Showing "+label+" sessions", 2*time.Second)
 }
 
 // updateSearch handles key events in search mode.

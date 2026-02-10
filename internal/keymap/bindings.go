@@ -219,6 +219,7 @@ func DefaultBindings() []Binding {
 		{Key: "\\", Command: "toggle-sidebar", Context: "conversations-sidebar"},
 		{Key: "y", Command: "yank-details", Context: "conversations-sidebar"},
 		{Key: "Y", Command: "yank-resume", Context: "conversations-sidebar"},
+		{Key: "C", Command: "toggle-category", Context: "conversations-sidebar"},
 		{Key: "R", Command: "resume-in-workspace", Context: "conversations-sidebar"},
 
 		// Conversations main context (two-pane mode, right pane focused)

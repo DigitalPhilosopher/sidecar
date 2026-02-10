@@ -285,6 +285,14 @@ func (p *Plugin) renderSidebarPane(height int) string {
 	}
 	sb.WriteString(styles.Title.Render("Sessions"))
 	sb.WriteString(styles.Muted.Render(" " + countStr))
+	// Show category filter pill when active (td-91bbc4)
+	if len(p.filters.Categories) > 0 {
+		catLabel := strings.Join(p.filters.Categories, "+")
+		if len(catLabel) > 0 {
+			catLabel = strings.ToUpper(catLabel[:1]) + catLabel[1:]
+		}
+		sb.WriteString(" " + styles.RenderPillWithStyle(catLabel, styles.BarChipActive, ""))
+	}
 	// Show animated spinner while adapters are still sending batches (td-7198a5)
 	if p.loadingAdapters {
 		sb.WriteString(" " + p.adapterSpinner.View())
