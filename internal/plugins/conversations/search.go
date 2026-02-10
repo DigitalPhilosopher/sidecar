@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ type SearchFilters struct {
 	Query      string    // Text search
 	Adapters   []string  // ["claude-code", "codex"]
 	Models     []string  // ["opus", "sonnet", "haiku"]
+	Categories []string  // ["interactive", "cron", "system"]
 	DateRange  DateRange // today, week, custom
 	MinTokens  int       // Sessions with > N tokens
 	MaxTokens  int       // Sessions with < N tokens
@@ -32,6 +34,7 @@ func (f *SearchFilters) IsActive() bool {
 	return f.Query != "" ||
 		len(f.Adapters) > 0 ||
 		len(f.Models) > 0 ||
+		len(f.Categories) > 0 ||
 		f.DateRange.Preset != "" ||
 		f.MinTokens > 0 ||
 		f.MaxTokens > 0 ||
@@ -79,6 +82,22 @@ func (f *SearchFilters) HasModel(model string) bool {
 		}
 	}
 	return false
+}
+
+// ToggleCategory toggles a category in the filter list.
+func (f *SearchFilters) ToggleCategory(cat string) {
+	for i, c := range f.Categories {
+		if c == cat {
+			f.Categories = append(f.Categories[:i], f.Categories[i+1:]...)
+			return
+		}
+	}
+	f.Categories = append(f.Categories, cat)
+}
+
+// HasCategory returns true if the category is in the filter list.
+func (f *SearchFilters) HasCategory(cat string) bool {
+	return slices.Contains(f.Categories, cat)
 }
 
 // SetDateRange sets the date range preset.
@@ -129,6 +148,12 @@ func (f *SearchFilters) Matches(session adapter.Session) bool {
 		return false
 	}
 
+	// Category filter (only applies to sessions with a category set;
+	// non-Pi adapters leave SessionCategory empty and always pass through)
+	if len(f.Categories) > 0 && session.SessionCategory != "" && !f.HasCategory(session.SessionCategory) {
+		return false
+	}
+
 	// Model filter - Would need session.PrimaryModel field to check this
 	// For now, skip model filtering at session level
 
@@ -164,6 +189,9 @@ func (f *SearchFilters) String() string {
 	}
 	if len(f.Adapters) > 0 {
 		parts = append(parts, "[adapter:"+strings.Join(f.Adapters, ",")+"]")
+	}
+	if len(f.Categories) > 0 {
+		parts = append(parts, "[category:"+strings.Join(f.Categories, ",")+"]")
 	}
 	if f.DateRange.Preset != "" {
 		parts = append(parts, "["+f.DateRange.Preset+"]")

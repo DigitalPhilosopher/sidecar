@@ -120,6 +120,31 @@ func formatCost(cost float64) string {
 	return fmt.Sprintf("$%.1f", cost)
 }
 
+// renderCategoryBadge returns a dim category badge for non-interactive sessions.
+// Interactive sessions return empty string (clean default).
+func renderCategoryBadge(session adapter.Session) string {
+	switch session.SessionCategory {
+	case adapter.SessionCategoryCron:
+		return lipgloss.NewStyle().Foreground(styles.TextSubtle).Render("cron")
+	case adapter.SessionCategorySystem:
+		return lipgloss.NewStyle().Foreground(styles.TextSubtle).Render("sys")
+	default:
+		return ""
+	}
+}
+
+// categoryBadgeText returns the plain text for a category badge (for width calculations).
+func categoryBadgeText(session adapter.Session) string {
+	switch session.SessionCategory {
+	case adapter.SessionCategoryCron:
+		return "cron"
+	case adapter.SessionCategorySystem:
+		return "sys"
+	default:
+		return ""
+	}
+}
+
 func adapterBadgeText(session adapter.Session) string {
 	if session.AdapterIcon != "" {
 		return session.AdapterIcon
@@ -235,6 +260,9 @@ func adapterFilterOptions(adapters map[string]adapter.Adapter) []adapterFilterOp
 		"1": true,
 		"2": true,
 		"3": true,
+		"i": true, // category: interactive
+		"r": true, // category: cron
+		"s": true, // category: system
 		"t": true,
 		"y": true,
 		"w": true,
@@ -598,6 +626,20 @@ func extractToolCommand(toolName, input string, maxLen int) string {
 	return ""
 }
 
+// renderSourceLabel renders a source label with the channel badge dim and the name styled.
+// e.g. "[TG] Marcus Vorwaller" -> dim("[TG]") + styled("Marcus Vorwaller")
+func renderSourceLabel(label string) string {
+	// Split into badge part and name part
+	// Labels are like "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name", "[sys]"
+	if idx := strings.Index(label, "] "); idx != -1 {
+		badge := label[:idx+1]  // "[TG]"
+		name := label[idx+2:]   // "Marcus Vorwaller"
+		return styles.Muted.Render(badge) + " " + styles.StatusInProgress.Render(name)
+	}
+	// No name part, just the badge (e.g. "[WA]", "[sys]")
+	return styles.Muted.Render(label)
+}
+
 // renderMessageBubble renders a single message as a chat bubble with content blocks.
 func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth int) []string {
 	var lines []string
@@ -620,7 +662,11 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	if selected {
 		// For selected messages, use plain text (no colored backgrounds) for consistent highlighting
 		if msg.Role == "user" {
-			headerLine = fmt.Sprintf("%s[%s] you", cursorPrefix, ts)
+			userLabel := "you"
+			if msg.SourceLabel != "" {
+				userLabel = msg.SourceLabel
+			}
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, userLabel)
 		} else {
 			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, agentName)
 			// Add plain model name
@@ -638,7 +684,14 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	} else {
 		// For non-selected messages, use colorful styling
 		if msg.Role == "user" {
-			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusInProgress.Render("you"))
+			userLabel := "you"
+			if msg.SourceLabel != "" {
+				// Show channel badge dim, user name styled
+				userLabel = renderSourceLabel(msg.SourceLabel)
+			} else {
+				userLabel = styles.StatusInProgress.Render("you")
+			}
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, userLabel)
 		} else {
 			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusStaged.Render(agentName))
 
@@ -953,6 +1006,27 @@ func (p *Plugin) renderFilterMenu(height int) string {
 		}
 		sb.WriteString("\n")
 	}
+
+	// Category filters
+	sb.WriteString(styles.Subtitle.Render("Category:"))
+	sb.WriteString("\n")
+	categories := []struct {
+		key  string
+		name string
+		cat  string
+	}{
+		{"i", "Interactive", adapter.SessionCategoryInteractive},
+		{"r", "Cron jobs", adapter.SessionCategoryCron},
+		{"s", "System", adapter.SessionCategorySystem},
+	}
+	for _, c := range categories {
+		checkbox := "[ ]"
+		if p.filters.HasCategory(c.cat) {
+			checkbox = "[✓]"
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s %s\n", styles.Code.Render(c.key), checkbox, c.name))
+	}
+	sb.WriteString("\n")
 
 	// Model filters
 	sb.WriteString(styles.Subtitle.Render("Model:"))

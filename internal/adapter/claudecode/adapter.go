@@ -15,6 +15,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/adapter/cache"
+	"github.com/marcus/sidecar/internal/adapter/pricing"
 )
 
 // xmlTagRegex matches XML/HTML-like tags for stripping from session titles
@@ -49,12 +50,42 @@ type messageCacheEntry struct {
 // New creates a new Claude Code adapter.
 func New() *Adapter {
 	home, _ := os.UserHomeDir()
+	projectsDir := findClaudeCodeProjectsDir(home)
 	return &Adapter{
-		projectsDir:  filepath.Join(home, ".claude", "projects"),
+		projectsDir:  projectsDir,
 		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 		msgCache:     cache.New[messageCacheEntry](msgCacheMaxEntries),
 	}
+}
+
+// findClaudeCodeProjectsDir searches candidate paths for the Claude Code projects directory.
+// Returns the first path that exists, or the primary default if none found.
+func findClaudeCodeProjectsDir(home string) string {
+	candidates := claudeCodeProjectsCandidates(home)
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+	return filepath.Join(home, ".claude", "projects")
+}
+
+// claudeCodeProjectsCandidates returns candidate paths for the Claude Code projects directory.
+// v1.0.30+ moved from ~/.claude/projects to ~/.config/claude/projects (XDG).
+func claudeCodeProjectsCandidates(home string) []string {
+	var candidates []string
+
+	// v1.0.30+ XDG path (preferred)
+	candidates = append(candidates, filepath.Join(home, ".config", "claude", "projects"))
+
+	// Legacy path (pre-v1.0.30)
+	candidates = append(candidates, filepath.Join(home, ".claude", "projects"))
+
+	return candidates
 }
 
 // ID returns the adapter identifier.
@@ -838,7 +869,7 @@ func (a *Adapter) processMetadataLine(line []byte, meta *SessionMetadata, modelC
 
 	if raw.Message != nil && raw.Message.Usage != nil {
 		usage := raw.Message.Usage
-		meta.TotalTokens += usage.InputTokens + usage.OutputTokens
+		meta.TotalTokens += usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 
 		model := raw.Message.Model
 		if model != "" {
@@ -847,6 +878,7 @@ func (a *Adapter) processMetadataLine(line []byte, meta *SessionMetadata, modelC
 			mt.in += usage.InputTokens
 			mt.out += usage.OutputTokens
 			mt.cache += usage.CacheReadInputTokens
+			mt.cacheWrite += usage.CacheCreationInputTokens
 			modelTokens[model] = mt
 		}
 	}
@@ -866,30 +898,18 @@ func (a *Adapter) finalizeMetadataCost(meta *SessionMetadata, modelCounts map[st
 	}
 
 	for model, mt := range modelTokens {
-		var inRate, outRate float64
-		switch {
-		case strings.Contains(model, "opus"):
-			inRate, outRate = 15.0, 75.0
-		case strings.Contains(model, "sonnet"):
-			inRate, outRate = 3.0, 15.0
-		case strings.Contains(model, "haiku"):
-			inRate, outRate = 0.25, 1.25
-		default:
-			inRate, outRate = 3.0, 15.0
-		}
-		regularIn := mt.in - mt.cache
-		if regularIn < 0 {
-			regularIn = 0
-		}
-		meta.EstCost += float64(mt.cache)*inRate*0.1/1_000_000 +
-			float64(regularIn)*inRate/1_000_000 +
-			float64(mt.out)*outRate/1_000_000
+		meta.EstCost += pricing.ModelCost(model, pricing.Usage{
+			InputTokens:  mt.in,
+			OutputTokens: mt.out,
+			CacheRead:    mt.cache,
+			CacheWrite:   mt.cacheWrite,
+		})
 	}
 }
 
 // modelTokenEntry tracks per-model token accumulation for incremental cost calculation.
 type modelTokenEntry struct {
-	in, out, cache int
+	in, out, cache, cacheWrite int
 }
 
 type sessionMetaCacheEntry struct {

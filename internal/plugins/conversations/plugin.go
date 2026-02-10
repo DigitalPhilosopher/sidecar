@@ -173,9 +173,10 @@ type Plugin struct {
 	searchResults []adapter.Session
 
 	// Filter state
-	filterMode   bool
-	filters      SearchFilters
-	filterActive bool // true when any filter is active
+	filterMode             bool
+	filters                SearchFilters
+	filterActive           bool     // true when any filter is active
+	defaultCategoryFilter  []string // from config, used by C toggle to restore
 
 	// Markdown rendering
 	contentRenderer *GlamourRenderer
@@ -219,6 +220,9 @@ type Plugin struct {
 
 	// Large session warning tracking (td-ee67d8)
 	warnedSessions map[string]bool // session ID -> already warned about size
+
+	// Pi adapter discovery toast (td-697e89)
+	piDiscoveryToastShown bool // true after showing one-time Pi discovery toast
 
 	// Initial load state (td-6cc19f)
 	initialLoadDone bool        // true after sessions settle (no new arrivals for settleDelay)
@@ -372,6 +376,7 @@ func (p *Plugin) resetState() {
 	p.filterMode = false
 	p.filters = SearchFilters{}
 	p.filterActive = false
+	p.defaultCategoryFilter = nil
 
 	// Conversation flow view state
 	p.expandedMessages = make(map[string]bool)
@@ -435,6 +440,15 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	// Load persisted sidebar width
 	if savedWidth := state.GetConversationsSideWidth(); savedWidth > 0 {
 		p.sidebarWidth = savedWidth
+	}
+
+	// Store default category filter from config for C toggle (td-91bbc4)
+	// Don't apply on startup — non-Pi adapters leave SessionCategory empty,
+	// so filtering by "interactive" would hide all their sessions (td-d3b1f6)
+	if ctx.Config != nil && len(ctx.Config.Plugins.Conversations.DefaultCategoryFilter) > 0 {
+		p.defaultCategoryFilter = ctx.Config.Plugins.Conversations.DefaultCategoryFilter
+	} else {
+		p.defaultCategoryFilter = []string{adapter.SessionCategoryInteractive}
 	}
 
 	p.adapters = make(map[string]adapter.Adapter)
@@ -616,6 +630,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			// Check for large session warnings
 			if cmd := p.checkLargeSessionWarnings(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			// Check for Pi adapter discovery toast (td-697e89)
+			if cmd := p.checkPiDiscoveryToast(); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			// Schedule settle check for skeleton hide
@@ -1113,6 +1131,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "content-search", Name: "Find", Description: "Search content (F)", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
+		{ID: "toggle-category", Name: "Category", Description: "Toggle category filter", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 3},
 		{ID: "resume-in-workspace", Name: "Resume", Description: "Resume in workspace", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-details", Name: "Copy Details", Description: "Copy session details", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-resume", Name: "Copy Resume", Description: "Copy resume command", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},
@@ -1320,4 +1339,23 @@ func (p *Plugin) checkLargeSessionWarnings() tea.Cmd {
 	}
 	// Only show one warning at a time to avoid toast spam
 	return cmds[0]
+}
+
+// checkPiDiscoveryToast returns a one-time toast when Pi sessions first appear (td-697e89).
+func (p *Plugin) checkPiDiscoveryToast() tea.Cmd {
+	if p.piDiscoveryToastShown {
+		return nil
+	}
+	for _, s := range p.sessions {
+		if s.AdapterID == "pi" {
+			p.piDiscoveryToastShown = true
+			return func() tea.Msg {
+				return app.ToastMsg{
+					Message:  "Pi sessions found — press C to filter by category",
+					Duration: 4 * time.Second,
+				}
+			}
+		}
+	}
+	return nil
 }

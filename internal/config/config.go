@@ -56,6 +56,10 @@ type TDMonitorPluginConfig struct {
 type ConversationsPluginConfig struct {
 	Enabled       bool   `json:"enabled"`
 	ClaudeDataDir string `json:"claudeDataDir"`
+	// DefaultCategoryFilter sets the default session category filter on startup.
+	// Example: ["interactive"] hides cron/system sessions by default.
+	// Empty or omitted means show all sessions (no filter).
+	DefaultCategoryFilter []string `json:"defaultCategoryFilter,omitempty"`
 }
 
 // WorkspacePluginConfig configures the workspace plugin.

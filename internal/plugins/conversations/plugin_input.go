@@ -1,9 +1,11 @@
 package conversations
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/adapter"
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 )
@@ -171,12 +173,56 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Yank resume command to clipboard
 		return p, p.yankResumeCommand()
 
+	case "C":
+		// Quick-toggle category filter (td-91bbc4)
+		return p, p.toggleCategoryFilter()
+
 	case "R":
 		// Open resume modal for workspace
 		return p, p.openResumeModal()
 	}
 
 	return p, nil
+}
+
+// toggleCategoryFilter toggles between default category filter and showing all sessions (td-91bbc4).
+func (p *Plugin) toggleCategoryFilter() tea.Cmd {
+	if len(p.filters.Categories) > 0 {
+		// Currently filtered -> show all
+		p.filters.Categories = nil
+		p.filterActive = p.filters.IsActive()
+		p.cursor = 0
+		p.scrollOff = 0
+		p.hitRegionsDirty = true
+		return appmsg.ShowToast("Showing all sessions", 2*time.Second)
+	}
+
+	// Check if any sessions have a category set — if none do, the toggle is a no-op
+	hasCategorized := false
+	for _, s := range p.sessions {
+		if s.SessionCategory != "" {
+			hasCategorized = true
+			break
+		}
+	}
+	if !hasCategorized {
+		return appmsg.ShowToast("No categorized sessions", 2*time.Second)
+	}
+
+	// Currently showing all -> apply default filter
+	defaults := p.defaultCategoryFilter
+	if len(defaults) == 0 {
+		defaults = []string{adapter.SessionCategoryInteractive}
+	}
+	p.filters.Categories = make([]string, len(defaults))
+	copy(p.filters.Categories, defaults)
+	p.filterActive = p.filters.IsActive()
+	p.cursor = 0
+	p.scrollOff = 0
+	p.hitRegionsDirty = true
+	// Build label from active categories
+	label := strings.Join(p.filters.Categories, ", ")
+	return appmsg.ShowToast("Showing "+label+" sessions", 2*time.Second)
 }
 
 // updateSearch handles key events in search mode.
@@ -768,6 +814,18 @@ func (p *Plugin) updateFilter(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "3":
 		// Toggle model filter: haiku
 		p.filters.ToggleModel("haiku")
+
+	case "i":
+		// Toggle category filter: interactive
+		p.filters.ToggleCategory(adapter.SessionCategoryInteractive)
+
+	case "r":
+		// Toggle category filter: cron
+		p.filters.ToggleCategory(adapter.SessionCategoryCron)
+
+	case "s":
+		// Toggle category filter: system
+		p.filters.ToggleCategory(adapter.SessionCategorySystem)
 
 	case "t":
 		// Toggle date filter: today

@@ -21,6 +21,7 @@ import (
 	_ "github.com/marcus/sidecar/internal/adapter/geminicli"
 	_ "github.com/marcus/sidecar/internal/adapter/kiro"
 	_ "github.com/marcus/sidecar/internal/adapter/opencode"
+	_ "github.com/marcus/sidecar/internal/adapter/pi"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/config"
@@ -55,6 +56,11 @@ var (
 
 func main() {
 	flag.Parse()
+
+	// Unset TMUX so sidecar's internal tmux sessions are independent of any
+	// outer tmux session. This allows prefix+d to detach from the workspace's
+	// inner session rather than the user's outer tmux.
+	_ = os.Unsetenv("TMUX")
 
 	// Start pprof server if enabled (for memory profiling)
 	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {
@@ -154,14 +160,9 @@ func main() {
 		Keymap:      km,
 	}
 
-	// Detect adapters
-	adapters, err := adapter.DetectAdapters(projectRootPath)
-	if err != nil {
-		logger.Warn("adapter detection failed", "err", err)
-	}
-	if len(adapters) > 0 {
-		pluginCtx.Adapters = adapters
-	}
+	// Create all adapter instances upfront so they survive project switches.
+	// Per-project filtering happens in each plugin's Init() via Detect().
+	pluginCtx.Adapters = adapter.AllAdapters()
 
 	// Create plugin registry
 	registry := plugin.NewRegistry(pluginCtx)

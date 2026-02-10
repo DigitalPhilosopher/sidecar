@@ -285,6 +285,14 @@ func (p *Plugin) renderSidebarPane(height int) string {
 	}
 	sb.WriteString(styles.Title.Render("Sessions"))
 	sb.WriteString(styles.Muted.Render(" " + countStr))
+	// Show category filter pill when active (td-91bbc4)
+	if len(p.filters.Categories) > 0 {
+		catLabel := strings.Join(p.filters.Categories, "+")
+		if len(catLabel) > 0 {
+			catLabel = strings.ToUpper(catLabel[:1]) + catLabel[1:]
+		}
+		sb.WriteString(" " + styles.RenderPillWithStyle(catLabel, styles.BarChipActive, ""))
+	}
 	// Show animated spinner while adapters are still sending batches (td-7198a5)
 	if p.loadingAdapters {
 		sb.WriteString(" " + p.adapterSpinner.View())
@@ -327,6 +335,13 @@ func (p *Plugin) renderSidebarPane(height int) string {
 		}
 		if p.searchMode {
 			sb.WriteString(styles.Muted.Render("No matching sessions"))
+		} else if p.filterActive && len(p.filters.Categories) > 0 {
+			// Category filter is hiding all sessions (td-7d13d8)
+			label := strings.Join(p.filters.Categories, "/")
+			line1 := "No " + label + " sessions."
+			line2 := "Press C to show all."
+			msg := styles.Muted.Render(line1) + "\n" + styles.Subtle.Render(line2)
+			sb.WriteString(msg)
 		} else {
 			sb.WriteString(styles.Muted.Render("No sessions"))
 		}
@@ -487,11 +502,17 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 		rightColWidth += len(tokenCol)
 	}
 
+	// Category badge (cron/sys) for non-interactive sessions
+	catBadge := categoryBadgeText(session)
+
 	// Calculate prefix length for width calculations
 	// active(1) + badge + space + worktree + space (if worktree)
 	prefixLen := 1 + len(badgeText) + 1
 	if worktreeBadge != "" {
 		prefixLen += len(worktreeBadge) + 1 // badge + space
+	}
+	if catBadge != "" {
+		prefixLen += len(catBadge) + 1 // category badge + space
 	}
 	if session.IsSubAgent {
 		prefixLen += 2 // extra indent for sub-agents
@@ -528,6 +549,9 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 	if worktreeBadge != "" {
 		visibleLen += len(worktreeBadge) + 1 // worktree badge + space
 	}
+	if catBadge != "" {
+		visibleLen += len(catBadge) + 1 // category badge + space
+	}
 	padding := maxWidth - visibleLen - rightColWidth - 1
 	if padding < 0 {
 		padding = 0
@@ -550,7 +574,7 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 		sb.WriteString(" ")
 	}
 
-	// Colored adapter icon + worktree badge + name based on session type
+	// Colored adapter icon + worktree badge + name + category badge based on session type
 	if session.IsSubAgent {
 		// Sub-agents: muted styling
 		sb.WriteString(styles.Muted.Render(badgeText))
@@ -570,6 +594,12 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 			sb.WriteString(" ")
 		}
 		sb.WriteString(styles.Body.Render(name))
+	}
+
+	// Category badge (cron/sys) after name
+	if catBadge != "" {
+		sb.WriteString(" ")
+		sb.WriteString(renderCategoryBadge(session))
 	}
 
 	// Padding and right-aligned stats (only if we have data)
@@ -613,6 +643,10 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 			plain.WriteString(" ")
 		}
 		plain.WriteString(name)
+		if catBadge != "" {
+			plain.WriteString(" ")
+			plain.WriteString(catBadge)
+		}
 		if rightColWidth > 0 && padding > 0 {
 			plain.WriteString(strings.Repeat(" ", padding))
 			plain.WriteString(" ")
