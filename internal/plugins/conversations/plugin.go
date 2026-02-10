@@ -439,17 +439,14 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.sidebarWidth = savedWidth
 	}
 
-	// Apply default category filter from config (td-91bbc4)
+	// Store default category filter from config for C toggle (td-91bbc4)
+	// Don't apply on startup — non-Pi adapters leave SessionCategory empty,
+	// so filtering by "interactive" would hide all their sessions (td-d3b1f6)
 	if ctx.Config != nil && len(ctx.Config.Plugins.Conversations.DefaultCategoryFilter) > 0 {
 		p.defaultCategoryFilter = ctx.Config.Plugins.Conversations.DefaultCategoryFilter
 	} else {
-		// Default: show only interactive sessions (hide cron/system)
 		p.defaultCategoryFilter = []string{adapter.SessionCategoryInteractive}
 	}
-	// Apply default filter on startup
-	p.filters.Categories = make([]string, len(p.defaultCategoryFilter))
-	copy(p.filters.Categories, p.defaultCategoryFilter)
-	p.filterActive = p.filters.IsActive()
 
 	p.adapters = make(map[string]adapter.Adapter)
 	for id, a := range ctx.Adapters {

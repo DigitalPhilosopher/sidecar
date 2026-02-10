@@ -148,8 +148,9 @@ func (f *SearchFilters) Matches(session adapter.Session) bool {
 		return false
 	}
 
-	// Category filter
-	if len(f.Categories) > 0 && !f.HasCategory(session.SessionCategory) {
+	// Category filter (only applies to sessions with a category set;
+	// non-Pi adapters leave SessionCategory empty and always pass through)
+	if len(f.Categories) > 0 && session.SessionCategory != "" && !f.HasCategory(session.SessionCategory) {
 		return false
 	}
 

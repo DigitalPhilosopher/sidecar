@@ -3480,3 +3480,31 @@ func TestPluginReinitOnProjectSwitch(t *testing.T) {
 		}
 	})
 }
+
+// TestInitDoesNotApplyCategoryFilter verifies that Init() stores the default
+// category filter but does NOT apply it to p.filters.Categories (td-d3b1f6).
+func TestInitDoesNotApplyCategoryFilter(t *testing.T) {
+	p := New()
+	ctx := &plugin.Context{
+		WorkDir:  "/test/project",
+		Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+	}
+	if err := p.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	// defaultCategoryFilter should be set (for C toggle)
+	if len(p.defaultCategoryFilter) == 0 {
+		t.Error("defaultCategoryFilter should be set after Init")
+	}
+
+	// But filters.Categories should NOT be applied on startup
+	if len(p.filters.Categories) != 0 {
+		t.Errorf("filters.Categories should be empty after Init, got %v", p.filters.Categories)
+	}
+
+	// filterActive should be false
+	if p.filterActive {
+		t.Error("filterActive should be false after Init without applied filters")
+	}
+}

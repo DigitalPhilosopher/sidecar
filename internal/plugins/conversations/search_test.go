@@ -128,6 +128,41 @@ func TestSearchFilters_Matches(t *testing.T) {
 	}
 }
 
+func TestSearchFilters_Matches_CategoryPassthrough(t *testing.T) {
+	// Sessions with empty SessionCategory (non-Pi adapters) should always
+	// pass through the category filter (td-d3b1f6)
+	emptyCategory := adapter.Session{
+		ID:              "ses_cc_1",
+		Name:            "Claude Code session",
+		AdapterID:       "claude-code",
+		SessionCategory: "", // non-Pi adapter: no category set
+	}
+	piInteractive := adapter.Session{
+		ID:              "ses_pi_1",
+		Name:            "Pi interactive",
+		AdapterID:       "pi",
+		SessionCategory: "interactive",
+	}
+	piSystem := adapter.Session{
+		ID:              "ses_pi_2",
+		Name:            "Pi system",
+		AdapterID:       "pi",
+		SessionCategory: "system",
+	}
+
+	f := SearchFilters{Categories: []string{"interactive"}}
+
+	if !f.Matches(emptyCategory) {
+		t.Error("session with empty category should pass through category filter")
+	}
+	if !f.Matches(piInteractive) {
+		t.Error("interactive Pi session should match interactive filter")
+	}
+	if f.Matches(piSystem) {
+		t.Error("system Pi session should NOT match interactive filter")
+	}
+}
+
 func TestSearchFilters_Matches_DateRange(t *testing.T) {
 	now := time.Now()
 	session := adapter.Session{
