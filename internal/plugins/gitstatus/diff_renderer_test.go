@@ -317,6 +317,106 @@ func TestRenderDiffContentWithOffset_DisablesWordDiff(t *testing.T) {
 	}
 }
 
+func TestRenderLineDiff_WrapEnabled(t *testing.T) {
+	longContent := strings.Repeat("ABCDEFGHIJ", 15) // 150 chars
+	diff := &ParsedDiff{
+		OldFile: "test.go",
+		NewFile: "test.go",
+		Hunks: []Hunk{
+			{
+				OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+				Lines: []DiffLine{
+					{Type: LineAdd, OldLineNo: 0, NewLineNo: 1, Content: longContent},
+				},
+			},
+		},
+	}
+
+	result := RenderLineDiff(diff, 40, 0, 50, 0, nil, true)
+	if result == "" {
+		t.Fatal("wrap=true returned empty")
+	}
+	lines := strings.Split(result, "\n")
+	// With wrapping at width 40, a 150-char line should produce multiple lines
+	if len(lines) < 3 {
+		t.Errorf("expected multiple wrapped lines, got %d", len(lines))
+	}
+}
+
+func TestRenderLineDiff_WrapVsTruncate(t *testing.T) {
+	longContent := strings.Repeat("A", 100)
+	diff := &ParsedDiff{
+		OldFile: "test.go",
+		NewFile: "test.go",
+		Hunks: []Hunk{
+			{
+				OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+				Lines: []DiffLine{
+					{Type: LineAdd, OldLineNo: 0, NewLineNo: 1, Content: longContent},
+				},
+			},
+		},
+	}
+
+	truncated := RenderLineDiff(diff, 40, 0, 50, 0, nil, false)
+	wrapped := RenderLineDiff(diff, 40, 0, 50, 0, nil, true)
+
+	truncLines := strings.Count(truncated, "\n")
+	wrapLines := strings.Count(wrapped, "\n")
+
+	if wrapLines <= truncLines {
+		t.Errorf("wrapped (%d newlines) should have more lines than truncated (%d newlines)", wrapLines, truncLines)
+	}
+}
+
+func TestRenderSideBySide_WrapEnabled(t *testing.T) {
+	longContent := strings.Repeat("XYZW", 30) // 120 chars
+	diff := &ParsedDiff{
+		OldFile: "test.go",
+		NewFile: "test.go",
+		Hunks: []Hunk{
+			{
+				OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+				Lines: []DiffLine{
+					{Type: LineRemove, OldLineNo: 1, NewLineNo: 0, Content: longContent},
+					{Type: LineAdd, OldLineNo: 0, NewLineNo: 1, Content: longContent},
+				},
+			},
+		},
+	}
+
+	result := RenderSideBySide(diff, 60, 0, 50, 0, nil, true)
+	if result == "" {
+		t.Fatal("wrap=true side-by-side returned empty")
+	}
+	if !strings.Contains(result, "│") {
+		t.Error("expected separator in side-by-side output")
+	}
+}
+
+func TestRenderLineDiff_WrapRespectsMaxLines(t *testing.T) {
+	veryLong := strings.Repeat("W", 500)
+	diff := &ParsedDiff{
+		OldFile: "test.go",
+		NewFile: "test.go",
+		Hunks: []Hunk{
+			{
+				OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 1,
+				Lines: []DiffLine{
+					{Type: LineAdd, OldLineNo: 0, NewLineNo: 1, Content: veryLong},
+				},
+			},
+		},
+	}
+
+	maxLines := 3
+	result := RenderLineDiff(diff, 40, 0, maxLines, 0, nil, true)
+	lineCount := strings.Count(result, "\n")
+	if lineCount > maxLines {
+		t.Errorf("output has %d lines, should not exceed maxLines=%d", lineCount, maxLines)
+	}
+}
+
 func TestRenderLineDiff_WithWrapEnabled(t *testing.T) {
 	// Create a diff with a very long line
 	longContent := strings.Repeat("x", 200)

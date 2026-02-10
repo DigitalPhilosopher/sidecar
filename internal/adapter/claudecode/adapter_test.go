@@ -1080,3 +1080,83 @@ func TestMessagesCaching_ToolLinkingAcrossBoundary(t *testing.T) {
 		t.Errorf("tool use output not linked, got: %q", msgs2[1].ToolUses[0].Output)
 	}
 }
+
+func TestSessionMetadataCacheHit(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := tmpDir + "/cache-hit.jsonl"
+
+	data := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"test"},"cwd":"/work"}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","message":{"role":"assistant","content":"reply","model":"claude-sonnet-4-20250514","usage":{"input_tokens":50,"output_tokens":25}}}
+`
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.metaCache = make(map[string]sessionMetaCacheEntry)
+
+	info, _ := os.Stat(sessionPath)
+
+	// First call: full parse
+	meta1, err := a.sessionMetadata(sessionPath, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Second call with same info: should be cache hit
+	meta2, err := a.sessionMetadata(sessionPath, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if meta1.MsgCount != meta2.MsgCount {
+		t.Errorf("cache hit should return same MsgCount: %d vs %d", meta1.MsgCount, meta2.MsgCount)
+	}
+	if meta1.TotalTokens != meta2.TotalTokens {
+		t.Errorf("cache hit should return same TotalTokens: %d vs %d", meta1.TotalTokens, meta2.TotalTokens)
+	}
+}
+
+func TestSessionMetadataCacheInvalidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := tmpDir + "/cache-invalidate.jsonl"
+
+	data := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"test"},"cwd":"/work"}
+`
+	if err := os.WriteFile(sessionPath, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.metaCache = make(map[string]sessionMetaCacheEntry)
+
+	info1, _ := os.Stat(sessionPath)
+
+	meta1, err := a.sessionMetadata(sessionPath, info1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta1.MsgCount != 1 {
+		t.Fatalf("expected 1 msg, got %d", meta1.MsgCount)
+	}
+
+	// Rewrite file with different content (not append — full replacement)
+	newData := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"first"},"cwd":"/work"}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","message":{"role":"assistant","content":"second","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","timestamp":"2024-01-01T10:02:00Z","message":{"role":"user","content":"third"},"cwd":"/work"}
+`
+	if err := os.WriteFile(sessionPath, []byte(newData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info2, _ := os.Stat(sessionPath)
+
+	// Size changed, so cache should be invalidated
+	meta2, err := a.sessionMetadata(sessionPath, info2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta2.MsgCount != 3 {
+		t.Errorf("expected 3 msgs after invalidation, got %d", meta2.MsgCount)
+	}
+}

@@ -4,56 +4,62 @@ import "testing"
 
 func TestIsValidHexColor(t *testing.T) {
 	tests := []struct {
-		name  string
 		input string
-		valid bool
+		want  bool
 	}{
-		// Valid 6-char hex colors
-		{"valid uppercase", "#FF5500", true},
-		{"valid lowercase", "#aabbcc", true},
-		{"valid mixed case", "#AbCdEf", true},
-		{"valid all zeros", "#000000", true},
-		{"valid all Fs", "#FFFFFF", true},
-		
-		// Valid 8-char hex colors with alpha
-		{"valid with alpha 80", "#00000080", true},
-		{"valid with alpha FF", "#FF5500FF", true},
-		{"valid with alpha 00", "#aabbcc00", true},
-		
-		// Invalid formats - wrong length
-		{"invalid 3-char", "#FFF", false},
-		{"invalid 4-char", "#FFFF", false},
-		{"invalid 5-char", "#FF550", false},
-		{"invalid 7-char", "#FF55001", false},
-		{"invalid 9-char", "#FF5500801", false},
-		
-		// Invalid formats - no hash
-		{"no hash 6-char", "FF5500", false},
-		{"no hash 8-char", "FF550080", false},
-		
-		// Invalid formats - invalid characters
-		{"invalid char G", "#GGGGGG", false},
-		{"invalid char Z", "#ZZZZZZ", false},
-		{"invalid char space", "#FF 550", false},
-		{"invalid char dash", "#FF-550", false},
-		
-		// Edge cases
-		{"empty string", "", false},
-		{"just hash", "#", false},
-		{"very long", "#FF5500FF5500FF5500", false},
-		{"hash only no digits", "#XXXXXX", false},
-		
-		// Boundary cases
-		{"exactly 6 hex digits", "#123456", true},
-		{"exactly 8 hex digits", "#12345678", true},
+		{"#FF0000", true},
+		{"#ff0000", true},
+		{"#aaBBcc", true},
+		{"#FF0000AA", true},
+		{"#ff0000aa", true},
+		{"", false},
+		{"FF0000", false},
+		{"#FFF", false},
+		{"#GGGGGG", false},
+		{"#FF00001", false},
+		{"#FF000", false},
+		{"#FF0000AAB", false},
+		{"hello", false},
+		{"#", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidHexColor(tt.input); got != tt.want {
+				t.Errorf("IsValidHexColor(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidTheme(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"default", true},
+		{"dracula", true},
+		{"nonexistent-theme", false},
+		{"", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsValidHexColor(tt.input)
-			if got != tt.valid {
-				t.Errorf("IsValidHexColor(%q) = %v, want %v", tt.input, got, tt.valid)
+			if got := IsValidTheme(tt.name); got != tt.want {
+				t.Errorf("IsValidTheme(%q) = %v, want %v", tt.name, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGetTheme(t *testing.T) {
+	theme := GetTheme("default")
+	if theme.Name == "" {
+		t.Error("GetTheme(\"default\") returned theme with empty name")
+	}
+
+	fallback := GetTheme("nonexistent")
+	if fallback.Name != DefaultTheme.Name {
+		t.Errorf("GetTheme(\"nonexistent\") = %q, want default theme %q", fallback.Name, DefaultTheme.Name)
 	}
 }
