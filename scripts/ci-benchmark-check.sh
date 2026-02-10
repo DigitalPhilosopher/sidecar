@@ -36,12 +36,16 @@ trap "rm -f $BENCH_OUTPUT" EXIT
 
 # Run benchmarks and capture output
 echo "Running claudecode adapter benchmarks..."
-go test -bench=BenchmarkMessages -benchmem -run=^$ -timeout=10m \
-    ./internal/adapter/claudecode > "$BENCH_OUTPUT" 2>&1 || true
+go test -bench=. -benchmem -run=^$ -timeout=10m \
+    ./internal/adapter/claudecode >> "$BENCH_OUTPUT" 2>&1 || true
 
 echo "Running codex adapter benchmarks..."
-go test -bench=BenchmarkSession -benchmem -run=^$ -timeout=10m \
+go test -bench=. -benchmem -run=^$ -timeout=10m \
     ./internal/adapter/codex >> "$BENCH_OUTPUT" 2>&1 || true
+
+# Show captured output for debugging
+echo "Benchmark output captured:"
+wc -l "$BENCH_OUTPUT"
 
 # Step 3: Compile and run regression detector
 echo ""
@@ -54,10 +58,10 @@ go build -o "$DETECTOR_BIN" "$SCRIPT_DIR/perf-regressor.go" || {
     exit 0
 }
 
-# Run detector with baseline
+# Run detector with baseline and benchmark output file
 "$DETECTOR_BIN" \
-    -bench-dir="$REPO_ROOT" \
     -baseline="$BASELINE_FILE" \
+    -bench-output="$BENCH_OUTPUT" \
     -regression="$REGRESSION_THRESHOLD" \
     -output="$REPORT_FILE"
 
