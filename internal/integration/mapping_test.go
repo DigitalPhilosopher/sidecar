@@ -255,6 +255,8 @@ func TestIsInternalLabelWithGHPrefix(t *testing.T) {
 		{"gh:#42", true},
 		{"gh:#1", true},
 		{"gh:#999", true},
+		{"jira:PROJ-123", true},
+		{"jira:KEY-1", true},
 		{"frontend", false},
 		{"bug", false},
 		{"priority:P1", false},
@@ -299,5 +301,26 @@ func TestContainsLabel(t *testing.T) {
 	}
 	if containsLabel(nil, "anything") {
 		t.Error("containsLabel should return false for nil slice")
+	}
+}
+
+func TestJiraSyncLabelExcludedFromPush(t *testing.T) {
+	td := TDIssue{
+		Title:  "Test",
+		Labels: []string{"jira:PROJ-123", "frontend"},
+	}
+	ext := TDToExternal(td)
+
+	for _, l := range ext.Labels {
+		if l == "jira:PROJ-123" {
+			t.Error("jira sync label 'jira:PROJ-123' should be excluded from external labels")
+		}
+	}
+	labelSet := make(map[string]bool)
+	for _, l := range ext.Labels {
+		labelSet[l] = true
+	}
+	if !labelSet["frontend"] {
+		t.Error("user label 'frontend' should be present")
 	}
 }

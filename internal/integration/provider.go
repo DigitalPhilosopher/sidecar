@@ -7,11 +7,13 @@ import (
 
 // ExternalIssue is the normalized representation of an external issue.
 type ExternalIssue struct {
-	ID        string    // External identifier (e.g., "42" for GH issue #42)
+	ID        string    // External identifier (e.g., "42" for GH issue #42, "PROJ-123" for Jira)
 	Title     string
 	Body      string
 	State     string   // "open" or "closed"
 	Labels    []string
+	Type      string   // Native type (e.g., Jira issue type); empty for label-encoded providers
+	Priority  string   // Native priority (e.g., Jira priority); empty for label-encoded providers
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -36,6 +38,9 @@ type Provider interface {
 
 	// Name returns a human-readable provider name.
 	Name() string
+
+	// Mapper returns the field mapper for this provider.
+	Mapper() Mapper
 
 	// Available checks whether the provider can be used in the given workDir.
 	Available(workDir string) (bool, error)

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -14,13 +13,14 @@ import (
 // SyncResult summarizes the outcome of a sync operation.
 type SyncResult struct {
 	Pulled int      // Issues created/updated locally
-	Pushed int      // Issues created/updated on GitHub
+	Pushed int      // Issues created/updated on external provider
 	Errors []string // Non-fatal errors
 }
 
 // Pull fetches issues from the external provider and creates/updates local td issues.
 func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*SyncResult, error) {
 	result := &SyncResult{}
+	mapper := provider.Mapper()
 
 	// Get all external issues
 	extIssues, err := provider.List(ctx, workDir)
@@ -35,7 +35,7 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 	}
 
 	// Load sync state
-	state, err := LoadState(todosDir)
+	state, err := LoadState(todosDir, provider.ID())
 	if err != nil {
 		return nil, fmt.Errorf("load sync state: %w", err)
 	}
@@ -47,22 +47,16 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 	}
 
 	for _, ext := range extIssues {
-		ghNumber, err := strconv.Atoi(ext.ID)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("invalid GH number %q", ext.ID))
-			continue
-		}
-
-		tdID, entry := state.FindByGHNumber(ghNumber)
+		tdID, entry := state.FindByExternalID(ext.ID)
 
 		if entry != nil {
-			// Already mapped — update if GH changed since last sync
-			if ext.UpdatedAt.After(entry.GHUpdatedAt) {
-				mapped := ExternalToTD(ext)
-				// Include gh sync label
-				ghLabel := GHSyncLabel(ghNumber)
-				if !containsLabel(mapped.Labels, ghLabel) {
-					mapped.Labels = append(mapped.Labels, ghLabel)
+			// Already mapped — update if external changed since last sync
+			if ext.UpdatedAt.After(entry.ExtUpdatedAt) {
+				mapped := mapper.ExternalToTD(ext)
+				// Include sync indicator label
+				syncLbl := mapper.SyncLabel(ext.ID)
+				if !containsLabel(mapped.Labels, syncLbl) {
+					mapped.Labels = append(mapped.Labels, syncLbl)
 				}
 				if err := updateTDIssue(workDir, tdID, mapped); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("update td %s: %v", tdID, err))
@@ -70,24 +64,24 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 				}
 				// Update sync state timestamps
 				state.Issues[tdID] = SyncStateEntry{
-					GHNumber:    ghNumber,
-					TDUpdatedAt: time.Now(),
-					GHUpdatedAt: ext.UpdatedAt,
+					ExternalID:   ext.ID,
+					TDUpdatedAt:  time.Now(),
+					ExtUpdatedAt: ext.UpdatedAt,
 				}
 				result.Pulled++
 			}
 		} else {
 			// New issue — create in td
-			mapped := ExternalToTD(ext)
+			mapped := mapper.ExternalToTD(ext)
 			newID, err := createTDIssue(workDir, mapped)
 			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("create td for GH #%d: %v", ghNumber, err))
+				result.Errors = append(result.Errors, fmt.Sprintf("create td for %s %s: %v", provider.Name(), ext.ID, err))
 				continue
 			}
 
-			// Set status (if not open) and gh sync label via update
-			ghLabel := GHSyncLabel(ghNumber)
-			update := TDIssue{Labels: append(mapped.Labels, ghLabel)}
+			// Set status (if not open) and sync label via update
+			syncLbl := mapper.SyncLabel(ext.ID)
+			update := TDIssue{Labels: append(mapped.Labels, syncLbl)}
 			if mapped.Status != "" && mapped.Status != "open" {
 				update.Status = mapped.Status
 			}
@@ -96,16 +90,16 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 			}
 
 			state.Issues[newID] = SyncStateEntry{
-				GHNumber:    ghNumber,
-				TDUpdatedAt: time.Now(),
-				GHUpdatedAt: ext.UpdatedAt,
+				ExternalID:   ext.ID,
+				TDUpdatedAt:  time.Now(),
+				ExtUpdatedAt: ext.UpdatedAt,
 			}
 			result.Pulled++
 		}
 	}
 
 	// Save sync state
-	if err := SaveState(todosDir, state); err != nil {
+	if err := SaveState(todosDir, provider.ID(), state); err != nil {
 		return result, fmt.Errorf("save sync state: %w", err)
 	}
 
@@ -115,6 +109,7 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 // Push sends local td issues to the external provider.
 func Push(ctx context.Context, provider Provider, workDir, todosDir string) (*SyncResult, error) {
 	result := &SyncResult{}
+	mapper := provider.Mapper()
 
 	// Get all local td issues
 	tdIssues, err := listTDIssues(workDir)
@@ -123,77 +118,74 @@ func Push(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 	}
 
 	// Load sync state
-	state, err := LoadState(todosDir)
+	state, err := LoadState(todosDir, provider.ID())
 	if err != nil {
 		return nil, fmt.Errorf("load sync state: %w", err)
 	}
 
 	for _, td := range tdIssues {
 		entry := state.FindByTDID(td.ID)
-		ext := TDToExternal(td)
+		ext := mapper.TDToExternal(td)
 
 		if entry != nil {
 			// Already mapped — update if td changed since last sync
 			if td.UpdatedAt.After(entry.TDUpdatedAt) {
-				ghID := strconv.Itoa(entry.GHNumber)
-				if err := provider.Update(ctx, workDir, ghID, ext); err != nil {
-					result.Errors = append(result.Errors, fmt.Sprintf("update GH #%d: %v", entry.GHNumber, err))
+				if err := provider.Update(ctx, workDir, entry.ExternalID, ext); err != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("update %s %s: %v", provider.Name(), entry.ExternalID, err))
 					continue
 				}
 				// Handle state changes (close/reopen)
-				if ext.State == ghStateClosed {
-					if err := provider.Close(ctx, workDir, ghID); err != nil {
-						result.Errors = append(result.Errors, fmt.Sprintf("close GH #%d: %v", entry.GHNumber, err))
+				if ext.State == "closed" {
+					if err := provider.Close(ctx, workDir, entry.ExternalID); err != nil {
+						result.Errors = append(result.Errors, fmt.Sprintf("close %s %s: %v", provider.Name(), entry.ExternalID, err))
 					}
 				} else {
-					// Reopen if needed — gh reopen on already-open issue is a no-op
-					if err := provider.Reopen(ctx, workDir, ghID); err != nil {
-						// Non-fatal: issue might already be open
+					// Reopen if needed — reopen on already-open issue is a no-op
+					if err := provider.Reopen(ctx, workDir, entry.ExternalID); err != nil {
 						_ = err
 					}
 				}
 				state.Issues[td.ID] = SyncStateEntry{
-					GHNumber:    entry.GHNumber,
-					TDUpdatedAt: td.UpdatedAt,
-					GHUpdatedAt: time.Now(),
+					ExternalID:   entry.ExternalID,
+					TDUpdatedAt:  td.UpdatedAt,
+					ExtUpdatedAt: time.Now(),
 				}
 				result.Pushed++
 			}
 		} else {
-			// New issue — create on GH
+			// New issue — create on external provider
 			newID, err := provider.Create(ctx, workDir, ext)
 			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("create GH for %s: %v", td.ID, err))
+				result.Errors = append(result.Errors, fmt.Sprintf("create %s for %s: %v", provider.Name(), td.ID, err))
 				continue
 			}
-			ghNumber, _ := strconv.Atoi(newID)
 
-			// If the issue is closed, close it on GH too
-			if ext.State == ghStateClosed {
+			// If the issue is closed, close it on external too
+			if ext.State == "closed" {
 				if err := provider.Close(ctx, workDir, newID); err != nil {
-					result.Errors = append(result.Errors, fmt.Sprintf("close GH #%s: %v", newID, err))
+					result.Errors = append(result.Errors, fmt.Sprintf("close %s %s: %v", provider.Name(), newID, err))
 				}
 			}
 
-			// Add gh sync label to td issue
-			ghLabel := GHSyncLabel(ghNumber)
-			if !containsLabel(td.Labels, ghLabel) {
-				if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, ghLabel)}); err != nil {
+			// Add sync label to td issue
+			syncLbl := mapper.SyncLabel(newID)
+			if !containsLabel(td.Labels, syncLbl) {
+				if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, syncLbl)}); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("update td %s labels: %v", td.ID, err))
 				}
 			}
 
 			state.Issues[td.ID] = SyncStateEntry{
-				GHNumber:    ghNumber,
-				TDUpdatedAt: td.UpdatedAt,
-				GHUpdatedAt: time.Now(),
+				ExternalID:   newID,
+				TDUpdatedAt:  td.UpdatedAt,
+				ExtUpdatedAt: time.Now(),
 			}
 			result.Pushed++
 		}
 	}
 
 	// Save sync state
-	if err := SaveState(todosDir, state); err != nil {
+	if err := SaveState(todosDir, provider.ID(), state); err != nil {
 		return result, fmt.Errorf("save sync state: %w", err)
 	}
 
@@ -203,6 +195,7 @@ func Push(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 // PushOne sends a single td issue to the external provider.
 func PushOne(ctx context.Context, provider Provider, workDir, todosDir, tdIssueID string) (*SyncResult, error) {
 	result := &SyncResult{}
+	mapper := provider.Mapper()
 
 	// Get the single td issue
 	td, err := getTDIssue(workDir, tdIssueID)
@@ -211,68 +204,66 @@ func PushOne(ctx context.Context, provider Provider, workDir, todosDir, tdIssueI
 	}
 
 	// Load sync state
-	state, err := LoadState(todosDir)
+	state, err := LoadState(todosDir, provider.ID())
 	if err != nil {
 		return nil, fmt.Errorf("load sync state: %w", err)
 	}
 
 	entry := state.FindByTDID(td.ID)
-	ext := TDToExternal(td)
+	ext := mapper.TDToExternal(td)
 
 	if entry != nil {
-		// Already mapped — update on GH
-		ghID := strconv.Itoa(entry.GHNumber)
-		if err := provider.Update(ctx, workDir, ghID, ext); err != nil {
-			return nil, fmt.Errorf("update GH #%d: %w", entry.GHNumber, err)
+		// Already mapped — update on external
+		if err := provider.Update(ctx, workDir, entry.ExternalID, ext); err != nil {
+			return nil, fmt.Errorf("update %s %s: %w", provider.Name(), entry.ExternalID, err)
 		}
 		// Handle state changes (close/reopen)
-		if ext.State == ghStateClosed {
-			if err := provider.Close(ctx, workDir, ghID); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("close GH #%d: %v", entry.GHNumber, err))
+		if ext.State == "closed" {
+			if err := provider.Close(ctx, workDir, entry.ExternalID); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("close %s %s: %v", provider.Name(), entry.ExternalID, err))
 			}
 		} else {
-			if err := provider.Reopen(ctx, workDir, ghID); err != nil {
+			if err := provider.Reopen(ctx, workDir, entry.ExternalID); err != nil {
 				_ = err
 			}
 		}
 		state.Issues[td.ID] = SyncStateEntry{
-			GHNumber:    entry.GHNumber,
-			TDUpdatedAt: td.UpdatedAt,
-			GHUpdatedAt: time.Now(),
+			ExternalID:   entry.ExternalID,
+			TDUpdatedAt:  td.UpdatedAt,
+			ExtUpdatedAt: time.Now(),
 		}
 		result.Pushed++
 	} else {
-		// New issue — create on GH
+		// New issue — create on external
 		newID, err := provider.Create(ctx, workDir, ext)
 		if err != nil {
-			return nil, fmt.Errorf("create GH for %s: %w", td.ID, err)
+			return nil, fmt.Errorf("create %s for %s: %w", provider.Name(), td.ID, err)
 		}
-		ghNumber, _ := strconv.Atoi(newID)
 
-		if ext.State == ghStateClosed {
+		if ext.State == "closed" {
 			if err := provider.Close(ctx, workDir, newID); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("close GH #%s: %v", newID, err))
+				result.Errors = append(result.Errors, fmt.Sprintf("close %s %s: %v", provider.Name(), newID, err))
 			}
 		}
 
-		// Add gh sync label to td issue
-		ghLabel := GHSyncLabel(ghNumber)
-		if !containsLabel(td.Labels, ghLabel) {
-			if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, ghLabel)}); err != nil {
+		// Add sync label to td issue
+		syncLbl := mapper.SyncLabel(newID)
+		if !containsLabel(td.Labels, syncLbl) {
+			if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, syncLbl)}); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("update td %s labels: %v", td.ID, err))
 			}
 		}
 
 		state.Issues[td.ID] = SyncStateEntry{
-			GHNumber:    ghNumber,
-			TDUpdatedAt: td.UpdatedAt,
-			GHUpdatedAt: time.Now(),
+			ExternalID:   newID,
+			TDUpdatedAt:  td.UpdatedAt,
+			ExtUpdatedAt: time.Now(),
 		}
 		result.Pushed++
 	}
 
 	// Save sync state
-	if err := SaveState(todosDir, state); err != nil {
+	if err := SaveState(todosDir, provider.ID(), state); err != nil {
 		return result, fmt.Errorf("save sync state: %w", err)
 	}
 

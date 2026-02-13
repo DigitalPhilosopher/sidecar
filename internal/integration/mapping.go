@@ -5,6 +5,27 @@ import (
 	"strings"
 )
 
+// Mapper defines the interface for mapping between td issues and external issues.
+type Mapper interface {
+	// SyncLabelPrefix returns the prefix for sync indicator labels (e.g., "gh:#", "jira:").
+	SyncLabelPrefix() string
+
+	// SyncLabel returns a sync indicator label for a given external ID.
+	SyncLabel(externalID string) string
+
+	// IsInternalLabel returns true for labels managed by the sync system.
+	IsInternalLabel(label string) bool
+
+	// TDToExternal converts a td issue to an ExternalIssue.
+	TDToExternal(td TDIssue) ExternalIssue
+
+	// ExternalToTD converts an ExternalIssue to td fields.
+	ExternalToTD(ext ExternalIssue) TDIssue
+}
+
+// GitHubMapper implements Mapper for GitHub Issues.
+type GitHubMapper struct{}
+
 // Status mapping: td has open/in_progress/blocked/closed, GH has open/closed.
 const (
 	ghStateOpen   = "open"
@@ -15,7 +36,26 @@ const (
 const (
 	priorityLabelPrefix = "priority:"
 	ghLabelPrefix       = "gh:#"
+	jiraLabelPrefix     = "jira:"
 )
+
+func (m *GitHubMapper) SyncLabelPrefix() string { return ghLabelPrefix }
+
+func (m *GitHubMapper) SyncLabel(externalID string) string {
+	return ghLabelPrefix + externalID
+}
+
+func (m *GitHubMapper) IsInternalLabel(label string) bool {
+	return isInternalLabel(label)
+}
+
+func (m *GitHubMapper) TDToExternal(td TDIssue) ExternalIssue {
+	return TDToExternal(td)
+}
+
+func (m *GitHubMapper) ExternalToTD(ext ExternalIssue) TDIssue {
+	return ExternalToTD(ext)
+}
 
 // GHSyncLabel returns a sync indicator label like "gh:#42" for a given GH issue number.
 func GHSyncLabel(ghNumber int) string {
@@ -170,5 +210,5 @@ func ExternalToTD(ext ExternalIssue) TDIssue {
 
 // isInternalLabel returns true for labels used internally by the sync system.
 func isInternalLabel(label string) bool {
-	return label == syncLabel || strings.HasPrefix(label, ghLabelPrefix)
+	return label == syncLabel || strings.HasPrefix(label, ghLabelPrefix) || strings.HasPrefix(label, jiraLabelPrefix)
 }

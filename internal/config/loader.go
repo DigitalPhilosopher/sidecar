@@ -40,6 +40,7 @@ type rawConfig struct {
 
 type rawIntegrationsConfig struct {
 	GitHub rawGitHubIntegrationConfig `json:"github"`
+	Jira   rawJiraIntegrationConfig   `json:"jira"`
 }
 
 type rawGitHubIntegrationConfig struct {
@@ -47,6 +48,14 @@ type rawGitHubIntegrationConfig struct {
 	SyncDirection string   `json:"syncDirection"`
 	LabelFilter   []string `json:"labelFilter"`
 	PushLabels    []string `json:"pushLabels"`
+}
+
+type rawJiraIntegrationConfig struct {
+	Enabled    *bool  `json:"enabled"`
+	URL        string `json:"url"`
+	ProjectKey string `json:"projectKey"`
+	Email      string `json:"email"`
+	APIToken   string `json:"apiToken"`
 }
 
 type rawUIConfig struct {
@@ -262,7 +271,7 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 		}
 	}
 
-	// Integrations
+	// Integrations — GitHub
 	if raw.Integrations.GitHub.Enabled != nil {
 		cfg.Integrations.GitHub.Enabled = *raw.Integrations.GitHub.Enabled
 	}
@@ -274,6 +283,23 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Integrations.GitHub.PushLabels != nil {
 		cfg.Integrations.GitHub.PushLabels = raw.Integrations.GitHub.PushLabels
+	}
+
+	// Integrations — Jira
+	if raw.Integrations.Jira.Enabled != nil {
+		cfg.Integrations.Jira.Enabled = *raw.Integrations.Jira.Enabled
+	}
+	if raw.Integrations.Jira.URL != "" {
+		cfg.Integrations.Jira.URL = raw.Integrations.Jira.URL
+	}
+	if raw.Integrations.Jira.ProjectKey != "" {
+		cfg.Integrations.Jira.ProjectKey = raw.Integrations.Jira.ProjectKey
+	}
+	if raw.Integrations.Jira.Email != "" {
+		cfg.Integrations.Jira.Email = raw.Integrations.Jira.Email
+	}
+	if raw.Integrations.Jira.APIToken != "" {
+		cfg.Integrations.Jira.APIToken = raw.Integrations.Jira.APIToken
 	}
 }
 

@@ -20,6 +20,7 @@ type saveConfig struct {
 
 type saveIntegrationsConfig struct {
 	GitHub saveGitHubIntegrationConfig `json:"github,omitempty"`
+	Jira   saveJiraIntegrationConfig   `json:"jira,omitempty"`
 }
 
 type saveGitHubIntegrationConfig struct {
@@ -27,6 +28,14 @@ type saveGitHubIntegrationConfig struct {
 	SyncDirection string   `json:"syncDirection,omitempty"`
 	LabelFilter   []string `json:"labelFilter,omitempty"`
 	PushLabels    []string `json:"pushLabels,omitempty"`
+}
+
+type saveJiraIntegrationConfig struct {
+	Enabled    *bool  `json:"enabled,omitempty"`
+	URL        string `json:"url,omitempty"`
+	ProjectKey string `json:"projectKey,omitempty"`
+	Email      string `json:"email,omitempty"`
+	APIToken   string `json:"apiToken,omitempty"`
 }
 
 type saveProjectsConfig struct {
@@ -107,6 +116,13 @@ func toSaveConfig(cfg *Config) saveConfig {
 				SyncDirection: cfg.Integrations.GitHub.SyncDirection,
 				LabelFilter:   cfg.Integrations.GitHub.LabelFilter,
 				PushLabels:    cfg.Integrations.GitHub.PushLabels,
+			},
+			Jira: saveJiraIntegrationConfig{
+				Enabled:    &cfg.Integrations.Jira.Enabled,
+				URL:        cfg.Integrations.Jira.URL,
+				ProjectKey: cfg.Integrations.Jira.ProjectKey,
+				Email:      cfg.Integrations.Jira.Email,
+				APIToken:   cfg.Integrations.Jira.APIToken,
 			},
 		},
 	}

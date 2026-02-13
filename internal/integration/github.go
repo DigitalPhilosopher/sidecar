@@ -34,8 +34,9 @@ func NewGitHubProvider() *GitHubProvider {
 	return &GitHubProvider{}
 }
 
-func (g *GitHubProvider) ID() string   { return "github" }
-func (g *GitHubProvider) Name() string { return "GitHub Issues" }
+func (g *GitHubProvider) ID() string     { return "github" }
+func (g *GitHubProvider) Name() string   { return "GitHub" }
+func (g *GitHubProvider) Mapper() Mapper { return &GitHubMapper{} }
 
 // Available checks if gh is installed and the workDir is a GitHub repo.
 func (g *GitHubProvider) Available(workDir string) (bool, error) {

@@ -15,6 +15,7 @@ type Config struct {
 // IntegrationsConfig holds external integration settings.
 type IntegrationsConfig struct {
 	GitHub GitHubIntegrationConfig `json:"github"`
+	Jira   JiraIntegrationConfig   `json:"jira"`
 }
 
 // GitHubIntegrationConfig configures GitHub Issues integration.
@@ -23,6 +24,15 @@ type GitHubIntegrationConfig struct {
 	SyncDirection string   `json:"syncDirection"` // "bidirectional", "pull-only", "push-only"
 	LabelFilter   []string `json:"labelFilter"`   // Only sync issues matching these labels (empty = all)
 	PushLabels    []string `json:"pushLabels"`     // Extra labels to add when pushing
+}
+
+// JiraIntegrationConfig configures Jira Cloud integration.
+type JiraIntegrationConfig struct {
+	Enabled    bool   `json:"enabled"`
+	URL        string `json:"url"`        // e.g., "https://myteam.atlassian.net"
+	ProjectKey string `json:"projectKey"` // e.g., "PROJ"
+	Email      string `json:"email"`
+	APIToken   string `json:"apiToken"`
 }
 
 // FeaturesConfig holds feature flag settings.
@@ -165,6 +175,9 @@ func Default() *Config {
 			GitHub: GitHubIntegrationConfig{
 				Enabled:       true,
 				SyncDirection: "bidirectional",
+			},
+			Jira: JiraIntegrationConfig{
+				Enabled: false,
 			},
 		},
 	}

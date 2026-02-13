@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/td/pkg/monitor"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/integration"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/styles"
@@ -37,8 +39,14 @@ type Plugin struct {
 	// Setup modal (shown when td is on PATH but project not initialized)
 	setupModal *SetupModel
 
-	// GitHub sync modal
+	// Sync modal (provider-aware)
 	syncModal *SyncModel
+
+	// Provider picker modal (shown when multiple providers available)
+	providerPicker *ProviderPickerModel
+
+	// Jira setup modal (shown when Jira not yet configured)
+	jiraSetupModal *JiraSetupModel
 
 	// tdOnPath tracks whether td binary is available on the system
 	tdOnPath bool
@@ -77,6 +85,8 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.notInstalled = nil
 	p.setupModal = nil
 	p.syncModal = nil
+	p.providerPicker = nil
+	p.jiraSetupModal = nil
 	p.started = false
 
 	// Check if td binary is available on PATH
@@ -114,10 +124,10 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		for _, b := range model.Keymap.ExportBindings() {
 			ctx.Keymap.RegisterPluginBinding(b.Key, b.Command, b.Context)
 		}
-		// Register GitHub sync keybinding
-		ctx.Keymap.RegisterPluginBinding("ctrl+g", "gh-sync", "td-monitor")
+		// Register sync keybinding
+		ctx.Keymap.RegisterPluginBinding("ctrl+g", "sync", "td-monitor")
 		// Register push-one keybinding for modal context
-		ctx.Keymap.RegisterPluginBinding("ctrl+g", "gh-push-issue", "td-modal")
+		ctx.Keymap.RegisterPluginBinding("ctrl+g", "push-issue", "td-modal")
 	}
 
 	return nil
@@ -151,6 +161,8 @@ func (p *Plugin) Stop() {
 	p.notInstalled = nil
 	p.setupModal = nil
 	p.syncModal = nil
+	p.providerPicker = nil
+	p.jiraSetupModal = nil
 	p.started = false
 }
 
@@ -210,8 +222,68 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
+	// Handle provider picker dismiss
+	if _, ok := msg.(ProviderPickerDismissMsg); ok {
+		p.providerPicker = nil
+		return p, nil
+	}
+
+	// Handle Jira setup dismiss
+	if _, ok := msg.(JiraSetupDismissMsg); ok {
+		p.jiraSetupModal = nil
+		return p, nil
+	}
+
+	// Handle Jira setup complete — update in-memory config and open sync modal
+	if setupMsg, ok := msg.(JiraSetupCompleteMsg); ok {
+		p.jiraSetupModal = nil
+
+		// Update in-memory config so subsequent operations use the new values
+		if p.ctx.Config != nil {
+			p.ctx.Config.Integrations.Jira = config.JiraIntegrationConfig{
+				Enabled:    true,
+				URL:        setupMsg.URL,
+				Email:      setupMsg.Email,
+				APIToken:   setupMsg.APIToken,
+				ProjectKey: setupMsg.ProjectKey,
+			}
+		}
+
+		// Build provider from the setup values directly
+		provider := integration.NewJiraProvider(integration.JiraProviderOptions{
+			URL:        setupMsg.URL,
+			ProjectKey: setupMsg.ProjectKey,
+			Email:      setupMsg.Email,
+			APIToken:   setupMsg.APIToken,
+		})
+		p.syncModal = NewSyncModel(p.ctx.WorkDir, provider)
+
+		return p, func() tea.Msg {
+			return app.ToastMsg{
+				Message:  "Jira configured successfully",
+				Duration: 2 * time.Second,
+			}
+		}
+	}
+
+	// Handle provider picked from picker modal
+	if pickedMsg, ok := msg.(ProviderPickedMsg); ok {
+		p.providerPicker = nil
+		// If Jira was picked but not configured, show setup
+		if pickedMsg.Provider.ID() == "jira" && !p.isJiraConfigured() {
+			p.jiraSetupModal = NewJiraSetupModel()
+			return p, nil
+		}
+		p.syncModal = NewSyncModel(p.ctx.WorkDir, pickedMsg.Provider)
+		return p, nil
+	}
+
 	// Handle single-issue push completion (no modal involved)
 	if doneMsg, ok := msg.(SyncPushOneDoneMsg); ok {
+		providerName := doneMsg.ProviderName
+		if providerName == "" {
+			providerName = "provider"
+		}
 		if doneMsg.Err != nil {
 			return p, func() tea.Msg {
 				return app.ToastMsg{
@@ -222,7 +294,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 		return p, func() tea.Msg {
-			message := fmt.Sprintf("Pushed %s to GitHub", doneMsg.IssueID)
+			message := fmt.Sprintf("Pushed %s to %s", doneMsg.IssueID, providerName)
 			if len(doneMsg.Result.Errors) > 0 {
 				message += fmt.Sprintf(" (%d errors)", len(doneMsg.Result.Errors))
 			}
@@ -242,15 +314,34 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 	}
 
-	// Handle ctrl+g in modal context — push current issue to GitHub
+	// Handle Jira setup test result
+	if p.jiraSetupModal != nil {
+		if _, ok := msg.(JiraSetupTestDoneMsg); ok {
+			cmd := p.jiraSetupModal.Update(msg)
+			return p, cmd
+		}
+	}
+
+	// Handle ctrl+g in modal context — push current issue to default provider
 	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "ctrl+g" && p.model != nil && p.syncModal == nil && p.model.ModalOpen() {
-		if modal := p.model.CurrentModal(); modal != nil && modal.IssueID != "" {
-			issueID := modal.IssueID
-			syncModel := NewSyncModel(p.ctx.WorkDir)
+		if modalInfo := p.model.CurrentModal(); modalInfo != nil && modalInfo.IssueID != "" {
+			issueID := modalInfo.IssueID
+			provider := p.getDefaultPushProvider()
+			if provider == nil {
+				return p, func() tea.Msg {
+					return app.ToastMsg{
+						Message:  "No sync provider available",
+						Duration: 2 * time.Second,
+						IsError:  true,
+					}
+				}
+			}
+			syncModel := NewSyncModel(p.ctx.WorkDir, provider)
+			providerName := provider.Name()
 			return p, tea.Batch(
 				func() tea.Msg {
 					return app.ToastMsg{
-						Message:  fmt.Sprintf("Pushing %s to GitHub...", issueID),
+						Message:  fmt.Sprintf("Pushing %s to %s...", issueID, providerName),
 						Duration: 2 * time.Second,
 					}
 				},
@@ -259,10 +350,33 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 	}
 
-	// Handle ctrl+g to open sync modal (only when td is initialized and no modal is active)
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "ctrl+g" && p.model != nil && p.syncModal == nil {
-		p.syncModal = NewSyncModel(p.ctx.WorkDir)
-		return p, nil
+	// Handle ctrl+g to open sync — provider picker if multiple, direct modal if one
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "ctrl+g" && p.model != nil && p.syncModal == nil && p.providerPicker == nil && p.jiraSetupModal == nil {
+		return p, p.openSyncFlow()
+	}
+
+	// If Jira setup modal is active, route input to it
+	if p.jiraSetupModal != nil {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			cmd := p.jiraSetupModal.Update(msg)
+			return p, cmd
+		}
+		if _, ok := msg.(tea.MouseMsg); ok {
+			cmd := p.jiraSetupModal.Update(msg)
+			return p, cmd
+		}
+	}
+
+	// If provider picker is active, route input to it
+	if p.providerPicker != nil {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			cmd := p.providerPicker.Update(msg)
+			return p, cmd
+		}
+		if _, ok := msg.(tea.MouseMsg); ok {
+			cmd := p.providerPicker.Update(msg)
+			return p, cmd
+		}
 	}
 
 	// If sync modal is active, route all input to it
@@ -384,7 +498,13 @@ func (p *Plugin) View(width, height int) string {
 		content = p.model.View()
 	}
 
-	// Render sync modal overlay if active
+	// Render overlay modals
+	if p.providerPicker != nil {
+		content = p.providerPicker.View(content, width, height)
+	}
+	if p.jiraSetupModal != nil {
+		content = p.jiraSetupModal.View(content, width, height)
+	}
 	if p.syncModal != nil {
 		content = p.syncModal.View(content, width, height)
 	}
@@ -421,11 +541,11 @@ func (p *Plugin) Commands() []plugin.Command {
 		})
 	}
 
-	// Add GitHub sync command
+	// Add sync command
 	commands = append(commands, plugin.Command{
-		ID:          "gh-sync",
+		ID:          "sync",
 		Name:        "Sync",
-		Description: "Sync issues with GitHub",
+		Description: "Sync issues with provider",
 		Context:     "td-monitor",
 		Priority:    50,
 		Category:    plugin.CategoryActions,
@@ -433,9 +553,9 @@ func (p *Plugin) Commands() []plugin.Command {
 
 	// Add push-one command for modal context
 	commands = append(commands, plugin.Command{
-		ID:          "gh-push-issue",
+		ID:          "push-issue",
 		Name:        "Push",
-		Description: "Push issue to GitHub",
+		Description: "Push issue to provider",
 		Context:     "td-modal",
 		Priority:    50,
 		Category:    plugin.CategoryActions,
@@ -479,6 +599,16 @@ func (p *Plugin) FocusContext() string {
 
 // ConsumesTextInput reports whether TD monitor is in a text-entry context.
 func (p *Plugin) ConsumesTextInput() bool {
+	// Overlay modals with text inputs consume all keystrokes
+	if p.jiraSetupModal != nil {
+		return true
+	}
+	if p.syncModal != nil {
+		return true
+	}
+	if p.providerPicker != nil {
+		return true
+	}
 	if p.model == nil {
 		return false
 	}
@@ -522,6 +652,108 @@ func formatCount(n int, singular, plural string) string {
 		return "1 " + singular
 	}
 	return fmt.Sprintf("%d %s", n, plural)
+}
+
+// configuredProviders returns providers that are fully configured and available.
+func (p *Plugin) configuredProviders() []integration.Provider {
+	var providers []integration.Provider
+
+	// Check GitHub
+	if p.ctx.Config != nil && p.ctx.Config.Integrations.GitHub.Enabled {
+		gh := integration.NewGitHubProvider()
+		if ok, _ := gh.Available(p.ctx.WorkDir); ok {
+			providers = append(providers, gh)
+		}
+	}
+
+	// Check Jira (fully configured only)
+	if p.isJiraConfigured() {
+		jiraCfg := p.ctx.Config.Integrations.Jira
+		jira := integration.NewJiraProvider(integration.JiraProviderOptions{
+			URL:        jiraCfg.URL,
+			ProjectKey: jiraCfg.ProjectKey,
+			Email:      jiraCfg.Email,
+			APIToken:   jiraCfg.APIToken,
+		})
+		providers = append(providers, jira)
+	}
+
+	return providers
+}
+
+// offerableProviders returns providers for the picker, including unconfigured
+// Jira (selecting it triggers setup). This ensures Jira is always discoverable.
+func (p *Plugin) offerableProviders() []integration.Provider {
+	providers := p.configuredProviders()
+
+	// Always offer Jira even when not configured — picking it triggers setup
+	if !p.isJiraConfigured() {
+		// Create a stub provider just for the picker (ID + Name only)
+		providers = append(providers, integration.NewJiraProvider(integration.JiraProviderOptions{}))
+	}
+
+	return providers
+}
+
+// isJiraConfigured returns true if Jira has URL/token configured.
+func (p *Plugin) isJiraConfigured() bool {
+	if p.ctx.Config == nil {
+		return false
+	}
+	jiraCfg := p.ctx.Config.Integrations.Jira
+	return jiraCfg.URL != "" && jiraCfg.APIToken != ""
+}
+
+// buildJiraProvider creates a JiraProvider from current config.
+func (p *Plugin) buildJiraProvider() integration.Provider {
+	if p.ctx.Config == nil {
+		return nil
+	}
+	jiraCfg := p.ctx.Config.Integrations.Jira
+	return integration.NewJiraProvider(integration.JiraProviderOptions{
+		URL:        jiraCfg.URL,
+		ProjectKey: jiraCfg.ProjectKey,
+		Email:      jiraCfg.Email,
+		APIToken:   jiraCfg.APIToken,
+	})
+}
+
+// getDefaultPushProvider returns the first configured provider for single-issue push.
+func (p *Plugin) getDefaultPushProvider() integration.Provider {
+	providers := p.configuredProviders()
+	if len(providers) > 0 {
+		return providers[0]
+	}
+	return nil
+}
+
+// openSyncFlow determines which modal to show based on available providers.
+func (p *Plugin) openSyncFlow() tea.Cmd {
+	offerable := p.offerableProviders()
+
+	switch len(offerable) {
+	case 0:
+		return func() tea.Msg {
+			return app.ToastMsg{
+				Message:  "No sync providers available",
+				Duration: 2 * time.Second,
+				IsError:  true,
+			}
+		}
+	case 1:
+		provider := offerable[0]
+		// If the single provider is unconfigured Jira, show setup
+		if provider.ID() == "jira" && !p.isJiraConfigured() {
+			p.jiraSetupModal = NewJiraSetupModel()
+			return nil
+		}
+		p.syncModal = NewSyncModel(p.ctx.WorkDir, provider)
+		return nil
+	default:
+		// Multiple options — show picker (always, so Jira setup is discoverable)
+		p.providerPicker = NewProviderPickerModel(offerable)
+		return nil
+	}
 }
 
 // buildMarkdownTheme creates a MarkdownThemeConfig from the current sidecar theme.
