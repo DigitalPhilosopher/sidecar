@@ -229,3 +229,75 @@ func TestInternalLabelExcluded(t *testing.T) {
 		t.Error("user label 'frontend' should be present")
 	}
 }
+
+func TestGHSyncLabel(t *testing.T) {
+	tests := []struct {
+		number int
+		want   string
+	}{
+		{1, "gh:#1"},
+		{42, "gh:#42"},
+		{1234, "gh:#1234"},
+	}
+	for _, tt := range tests {
+		if got := GHSyncLabel(tt.number); got != tt.want {
+			t.Errorf("GHSyncLabel(%d) = %q, want %q", tt.number, got, tt.want)
+		}
+	}
+}
+
+func TestIsInternalLabelWithGHPrefix(t *testing.T) {
+	tests := []struct {
+		label string
+		want  bool
+	}{
+		{"td-sync", true},
+		{"gh:#42", true},
+		{"gh:#1", true},
+		{"gh:#999", true},
+		{"frontend", false},
+		{"bug", false},
+		{"priority:P1", false},
+		{"gh:", false},  // no # prefix
+		{"gh#42", false}, // missing colon
+	}
+	for _, tt := range tests {
+		if got := isInternalLabel(tt.label); got != tt.want {
+			t.Errorf("isInternalLabel(%q) = %v, want %v", tt.label, got, tt.want)
+		}
+	}
+}
+
+func TestGHSyncLabelExcludedFromPush(t *testing.T) {
+	td := TDIssue{
+		Title:  "Test",
+		Labels: []string{"gh:#42", "frontend"},
+	}
+	ext := TDToExternal(td)
+
+	for _, l := range ext.Labels {
+		if l == "gh:#42" {
+			t.Error("gh sync label 'gh:#42' should be excluded from external labels")
+		}
+	}
+	labelSet := make(map[string]bool)
+	for _, l := range ext.Labels {
+		labelSet[l] = true
+	}
+	if !labelSet["frontend"] {
+		t.Error("user label 'frontend' should be present")
+	}
+}
+
+func TestContainsLabel(t *testing.T) {
+	labels := []string{"frontend", "gh:#42", "bug"}
+	if !containsLabel(labels, "gh:#42") {
+		t.Error("containsLabel should find 'gh:#42'")
+	}
+	if containsLabel(labels, "gh:#99") {
+		t.Error("containsLabel should not find 'gh:#99'")
+	}
+	if containsLabel(nil, "anything") {
+		t.Error("containsLabel should return false for nil slice")
+	}
+}

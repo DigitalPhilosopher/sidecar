@@ -1,6 +1,9 @@
 package integration
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Status mapping: td has open/in_progress/blocked/closed, GH has open/closed.
 const (
@@ -11,7 +14,23 @@ const (
 // Label prefixes used for mapping td fields to GH labels.
 const (
 	priorityLabelPrefix = "priority:"
+	ghLabelPrefix       = "gh:#"
 )
+
+// GHSyncLabel returns a sync indicator label like "gh:#42" for a given GH issue number.
+func GHSyncLabel(ghNumber int) string {
+	return fmt.Sprintf("%s%d", ghLabelPrefix, ghNumber)
+}
+
+// containsLabel checks if a label slice contains a specific label.
+func containsLabel(labels []string, target string) bool {
+	for _, l := range labels {
+		if l == target {
+			return true
+		}
+	}
+	return false
+}
 
 // Type-to-label mapping.
 var typeToLabel = map[string]string{
@@ -151,5 +170,5 @@ func ExternalToTD(ext ExternalIssue) TDIssue {
 
 // isInternalLabel returns true for labels used internally by the sync system.
 func isInternalLabel(label string) bool {
-	return label == syncLabel
+	return label == syncLabel || strings.HasPrefix(label, ghLabelPrefix)
 }

@@ -7,12 +7,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/marcus/td/pkg/monitor"
-	"github.com/marcus/td/pkg/monitor/modal"
-	"github.com/marcus/td/pkg/monitor/mouse"
 
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/integration"
+	"github.com/marcus/sidecar/internal/modal"
+	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 // SyncModel handles the GitHub sync modal.
@@ -218,7 +218,7 @@ func (m *SyncModel) View(background string, width, height int) string {
 		modalContent = m.modal.Render(width, height, m.mouseHandler)
 	}
 
-	return monitor.OverlayModal(background, modalContent, width, height)
+	return ui.OverlayModal(background, modalContent, width, height)
 }
 
 // SyncPushOneDoneMsg is sent when a single-issue push completes.

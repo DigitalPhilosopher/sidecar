@@ -101,13 +101,21 @@ func (g *GitHubProvider) List(ctx context.Context, workDir string) ([]ExternalIs
 }
 
 // Create creates a new GitHub issue and returns its number as a string.
+// Labels are only set if they already exist on the GitHub repo.
 func (g *GitHubProvider) Create(ctx context.Context, workDir string, issue ExternalIssue) (string, error) {
 	args := []string{"issue", "create",
 		"--title", issue.Title,
 		"--body", issue.Body,
 	}
-	for _, label := range issue.Labels {
-		args = append(args, "--label", label)
+	if len(issue.Labels) > 0 {
+		repoLabels, err := listRepoLabels(ctx, workDir)
+		if err == nil {
+			for _, label := range issue.Labels {
+				if repoLabels[label] {
+					args = append(args, "--label", label)
+				}
+			}
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, "gh", args...)
@@ -135,15 +143,23 @@ func (g *GitHubProvider) Create(ctx context.Context, workDir string, issue Exter
 }
 
 // Update updates an existing GitHub issue.
+// Labels are only added if they already exist on the GitHub repo.
 func (g *GitHubProvider) Update(ctx context.Context, workDir string, id string, issue ExternalIssue) error {
 	args := []string{"issue", "edit", id,
 		"--title", issue.Title,
 		"--body", issue.Body,
 	}
 
-	// Set labels (--add-label for each label)
-	for _, label := range issue.Labels {
-		args = append(args, "--add-label", label)
+	// Set labels (--add-label for each label), only if they exist on the repo
+	if len(issue.Labels) > 0 {
+		repoLabels, err := listRepoLabels(ctx, workDir)
+		if err == nil {
+			for _, label := range issue.Labels {
+				if repoLabels[label] {
+					args = append(args, "--add-label", label)
+				}
+			}
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, "gh", args...)
@@ -196,6 +212,34 @@ func (g *GitHubProvider) Reopen(ctx context.Context, workDir string, id string) 
 	}
 
 	return nil
+}
+
+// listRepoLabels returns a set of label names that exist on the GitHub repo.
+func listRepoLabels(ctx context.Context, workDir string) (map[string]bool, error) {
+	cmd := exec.CommandContext(ctx, "gh", "label", "list", "--json", "name", "--limit", "200")
+	cmd.Dir = workDir
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf("gh label list: %s", errMsg)
+	}
+
+	var labels []ghLabel
+	if err := json.Unmarshal(output, &labels); err != nil {
+		return nil, fmt.Errorf("parse gh labels: %w", err)
+	}
+
+	result := make(map[string]bool, len(labels))
+	for _, l := range labels {
+		result[l.Name] = true
+	}
+	return result, nil
 }
 
 // getRemoteURL returns the URL for the primary remote (origin).

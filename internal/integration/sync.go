@@ -59,6 +59,11 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 			// Already mapped — update if GH changed since last sync
 			if ext.UpdatedAt.After(entry.GHUpdatedAt) {
 				mapped := ExternalToTD(ext)
+				// Include gh sync label
+				ghLabel := GHSyncLabel(ghNumber)
+				if !containsLabel(mapped.Labels, ghLabel) {
+					mapped.Labels = append(mapped.Labels, ghLabel)
+				}
 				if err := updateTDIssue(workDir, tdID, mapped); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("update td %s: %v", tdID, err))
 					continue
@@ -79,6 +84,17 @@ func Pull(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 				result.Errors = append(result.Errors, fmt.Sprintf("create td for GH #%d: %v", ghNumber, err))
 				continue
 			}
+
+			// Set status (if not open) and gh sync label via update
+			ghLabel := GHSyncLabel(ghNumber)
+			update := TDIssue{Labels: append(mapped.Labels, ghLabel)}
+			if mapped.Status != "" && mapped.Status != "open" {
+				update.Status = mapped.Status
+			}
+			if err := updateTDIssue(workDir, newID, update); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("update td %s labels/status: %v", newID, err))
+			}
+
 			state.Issues[newID] = SyncStateEntry{
 				GHNumber:    ghNumber,
 				TDUpdatedAt: time.Now(),
@@ -159,6 +175,14 @@ func Push(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 				}
 			}
 
+			// Add gh sync label to td issue
+			ghLabel := GHSyncLabel(ghNumber)
+			if !containsLabel(td.Labels, ghLabel) {
+				if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, ghLabel)}); err != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("update td %s labels: %v", td.ID, err))
+				}
+			}
+
 			state.Issues[td.ID] = SyncStateEntry{
 				GHNumber:    ghNumber,
 				TDUpdatedAt: td.UpdatedAt,
@@ -228,6 +252,14 @@ func PushOne(ctx context.Context, provider Provider, workDir, todosDir, tdIssueI
 		if ext.State == ghStateClosed {
 			if err := provider.Close(ctx, workDir, newID); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("close GH #%s: %v", newID, err))
+			}
+		}
+
+		// Add gh sync label to td issue
+		ghLabel := GHSyncLabel(ghNumber)
+		if !containsLabel(td.Labels, ghLabel) {
+			if err := updateTDIssue(workDir, td.ID, TDIssue{Labels: append(td.Labels, ghLabel)}); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("update td %s labels: %v", td.ID, err))
 			}
 		}
 
