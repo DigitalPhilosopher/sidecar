@@ -6,7 +6,7 @@ All notable changes to sidecar are documented here.
 
 ### Dependencies
 
-- Updated td dependency to v0.35.0 — adds GTD-style deferral (td defer, td due, temporal list filters, monitor modal display)
+- Updated td to v0.35.0 — adds GTD-style deferral (td defer, td due, temporal list filters, monitor modal defer/due display)
 
 ## [v0.71.1] - 2026-02-10
 
