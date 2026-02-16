@@ -331,7 +331,7 @@ func getPiLastMessageStatus(path string) (WorktreeStatus, bool) {
 	if err != nil {
 		return 0, false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Seek to end - tail bytes for efficiency
 	info, err := file.Stat()
