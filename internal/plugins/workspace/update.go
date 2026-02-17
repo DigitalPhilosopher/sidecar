@@ -194,7 +194,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 			// Start agent or attach based on selection
 			if msg.AgentType != AgentNone && msg.AgentType != "" {
-				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
+				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.PlanMode, msg.Prompt))
 			} else {
 				// "None" selected - attach to worktree directory
 				cmds = append(cmds, p.AttachToWorktreeDir(msg.Worktree))
@@ -1308,7 +1308,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.worktrees = append(p.worktrees, msg.Worktree)
 		// Start agent if one was selected
 		if msg.AgentType != AgentNone && msg.AgentType != "" {
-			cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
+			cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.PlanMode, msg.Prompt))
 		}
 		cmds = append(cmds, func() tea.Msg {
 			return app.ToastMsg{

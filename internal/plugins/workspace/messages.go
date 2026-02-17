@@ -98,6 +98,7 @@ type CreateDoneMsg struct {
 	Worktree  *Worktree
 	AgentType AgentType // Agent selected at creation
 	SkipPerms bool      // Whether to skip permissions
+	PlanMode  bool      // Whether to start in plan mode
 	Prompt    *Prompt   // Selected prompt template (nil if none)
 	Err       error
 }
@@ -278,6 +279,7 @@ type QuickCreateWorkspaceMsg struct {
 	BaseBranch string     // Base branch (defaults to HEAD if empty)
 	AgentType  AgentType
 	SkipPerms  bool
+	PlanMode   bool
 	Prompt     *Prompt    // Selected prompt template (nil if none)
 }
 
@@ -286,6 +288,7 @@ type QuickCreateDoneMsg struct {
 	Worktree  *Worktree
 	AgentType AgentType
 	SkipPerms bool
+	PlanMode  bool
 	Prompt    *Prompt
 	Err       error
 }

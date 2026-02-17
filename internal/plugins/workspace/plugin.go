@@ -180,7 +180,8 @@ type Plugin struct {
 	createAgentType       AgentType // Selected agent type (default: AgentClaude)
 	createAgentIdx        int       // Selected agent index in AgentTypeOrder
 	createSkipPermissions bool      // Skip permissions checkbox
-	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create, 7=cancel
+	createPlanMode        bool      // Plan mode checkbox
+	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=planMode, 7=create, 8=cancel
 	createButtonHover     int       // 0=none, 1=create, 2=cancel
 	createError           string    // Error message to display in create modal
 	createModal           *modal.Modal
@@ -716,6 +717,7 @@ func (p *Plugin) clearCreateModal() {
 	p.createAgentType = AgentClaude // Default to Claude
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false
+	p.createPlanMode = p.defaultPlanMode()
 	p.createFocus = 0
 	p.createError = ""
 	p.createModal = nil
@@ -739,6 +741,14 @@ func (p *Plugin) clearPromptPickerModal() {
 	p.promptPickerModal = nil
 	p.promptPickerModalWidth = 0
 	p.promptPickerModalEmpty = false
+}
+
+// defaultPlanMode returns the default plan mode setting from config (default: true).
+func (p *Plugin) defaultPlanMode() bool {
+	if p.ctx != nil && p.ctx.Config != nil && p.ctx.Config.Plugins.Workspace.DefaultPlanMode != nil {
+		return *p.ctx.Config.Plugins.Workspace.DefaultPlanMode
+	}
+	return true // Plan mode enabled by default
 }
 
 // initCreateModalBase initializes common create modal state.
@@ -768,6 +778,7 @@ func (p *Plugin) initCreateModalBase() {
 	p.createAgentType = AgentClaude
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false
+	p.createPlanMode = p.defaultPlanMode()
 	p.createFocus = 0
 	p.createError = ""
 	p.createModal = nil
