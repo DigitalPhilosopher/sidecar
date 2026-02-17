@@ -23,6 +23,7 @@ const (
 	qcPromptID    = "qc-prompt"
 	qcAgentListID = "qc-agent-list"
 	qcSkipPermsID = "qc-skip-perms"
+	qcPlanModeID  = "qc-plan-mode"
 	qcCreateID    = "qc-create"
 	qcCancelID    = "qc-cancel"
 )
@@ -51,6 +52,7 @@ type QuickCreateModel struct {
 	// Agent
 	agentIdx  int
 	skipPerms bool
+	planMode  bool
 
 	// Error
 	createError string
@@ -62,7 +64,7 @@ type QuickCreateModel struct {
 }
 
 // NewQuickCreateModel creates a new quick-create modal for the given task.
-func NewQuickCreateModel(taskID, taskTitle, workDir string) *QuickCreateModel {
+func NewQuickCreateModel(taskID, taskTitle, workDir string, defaultPlanMode bool) *QuickCreateModel {
 	derivedName := deriveBranchName(taskID, taskTitle)
 
 	nameInput := textinput.New()
@@ -105,6 +107,7 @@ func NewQuickCreateModel(taskID, taskTitle, workDir string) *QuickCreateModel {
 		branchFiltered:  branches,
 		prompts:         prompts,
 		promptListIdx:   promptListIdx,
+		planMode:        defaultPlanMode,
 		mouseHandler:    mouse.NewHandler(),
 	}
 }
@@ -183,6 +186,9 @@ func (m *QuickCreateModel) ensureModal(width int) {
 		AddSection(modal.When(m.shouldShowSkipPerms, modal.Checkbox(qcSkipPermsID, "Auto-approve all actions", &m.skipPerms))).
 		AddSection(m.skipPermsHintSection()).
 		AddSection(modal.Spacer()).
+		AddSection(modal.When(m.shouldShowPlanMode, modal.Checkbox(qcPlanModeID, "Start in plan mode", &m.planMode))).
+		AddSection(m.planModeHintSection()).
+		AddSection(modal.When(m.shouldShowPlanMode, modal.Spacer())).
 		AddSection(m.errorSection()).
 		AddSection(modal.Buttons(
 			modal.Btn(" Create ", qcCreateID),
@@ -343,6 +349,24 @@ func (m *QuickCreateModel) shouldShowSkipPerms() bool {
 	return hasFlag && at != workspace.AgentNone
 }
 
+func (m *QuickCreateModel) shouldShowPlanMode() bool {
+	if m.agentIdx < 0 || m.agentIdx >= len(workspace.AgentTypeOrder) {
+		return false
+	}
+	at := workspace.AgentTypeOrder[m.agentIdx]
+	_, has := workspace.PlanModeFlags[at]
+	return has
+}
+
+func (m *QuickCreateModel) planModeHintSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		if !m.shouldShowPlanMode() {
+			return modal.RenderedSection{}
+		}
+		return modal.RenderedSection{Content: styles.Muted.Render("      (Adds --permission-mode plan)")}
+	}, nil)
+}
+
 func (m *QuickCreateModel) skipPermsHintSection() modal.Section {
 	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
 		if m.agentIdx < 0 || m.agentIdx >= len(workspace.AgentTypeOrder) {
@@ -376,6 +400,11 @@ func (m *QuickCreateModel) SelectedAgentType() workspace.AgentType {
 		return workspace.AgentClaude
 	}
 	return workspace.AgentTypeOrder[m.agentIdx]
+}
+
+// PlanMode returns whether plan mode is enabled.
+func (m *QuickCreateModel) PlanMode() bool {
+	return m.planMode
 }
 
 // SelectedPrompt returns the selected prompt, or nil if "(none)" is selected.

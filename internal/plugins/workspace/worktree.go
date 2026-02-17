@@ -235,11 +235,12 @@ func (p *Plugin) createWorktree() tea.Cmd {
 	taskTitle := p.createTaskTitle
 	agentType := p.createAgentType
 	skipPerms := p.createSkipPermissions
+	planMode := p.createPlanMode
 	prompt := p.getSelectedPrompt()
 
 	// Debug log to trace taskID flow
 	if p.ctx != nil && p.ctx.Logger != nil {
-		p.ctx.Logger.Debug("createWorktree: captured modal state", "name", name, "taskID", taskID, "taskTitle", taskTitle, "agentType", agentType, "skipPerms", skipPerms, "hasPrompt", prompt != nil)
+		p.ctx.Logger.Debug("createWorktree: captured modal state", "name", name, "taskID", taskID, "taskTitle", taskTitle, "agentType", agentType, "skipPerms", skipPerms, "planMode", planMode, "hasPrompt", prompt != nil)
 	}
 
 	if name == "" {
@@ -250,7 +251,7 @@ func (p *Plugin) createWorktree() tea.Cmd {
 
 	return func() tea.Msg {
 		wt, err := p.doCreateWorktree(name, baseBranch, taskID, taskTitle, agentType)
-		return CreateDoneMsg{Worktree: wt, AgentType: agentType, SkipPerms: skipPerms, Prompt: prompt, Err: err}
+		return CreateDoneMsg{Worktree: wt, AgentType: agentType, SkipPerms: skipPerms, PlanMode: planMode, Prompt: prompt, Err: err}
 	}
 }
 
@@ -269,6 +270,7 @@ func (p *Plugin) quickCreateWorkspace(msg QuickCreateWorkspaceMsg) tea.Cmd {
 	taskTitle := msg.TaskTitle
 	agentType := msg.AgentType
 	skipPerms := msg.SkipPerms
+	planMode := msg.PlanMode
 	prompt := msg.Prompt
 
 	return func() tea.Msg {
@@ -277,6 +279,7 @@ func (p *Plugin) quickCreateWorkspace(msg QuickCreateWorkspaceMsg) tea.Cmd {
 			Worktree:  wt,
 			AgentType: agentType,
 			SkipPerms: skipPerms,
+			PlanMode:  planMode,
 			Prompt:    prompt,
 			Err:       createErr,
 		}
