@@ -137,6 +137,7 @@ func TestGetAgentCommand(t *testing.T) {
 		{AgentGemini, "gemini"},
 		{AgentCursor, "cursor-agent"},
 		{AgentOpenCode, "opencode"},
+		{AgentPi, "pi"},
 		{AgentCustom, "claude"}, // Falls back to claude
 	}
 
@@ -449,6 +450,7 @@ func TestShouldShowSkipPermissions(t *testing.T) {
 		{AgentGemini, true},    // Has --yolo
 		{AgentCursor, true},    // Has -f flag
 		{AgentOpenCode, false}, // No known flag
+		{AgentPi, false},       // No known flag
 	}
 
 	p := &Plugin{}
@@ -624,6 +626,8 @@ func TestBuildAgentCommandSyntax(t *testing.T) {
 		{AgentCursor, true, "cursor-agent -f"},
 		{AgentOpenCode, false, "opencode"},
 		{AgentOpenCode, true, "opencode"}, // No skip flag
+		{AgentPi, false, "pi"},
+		{AgentPi, true, "pi"}, // No skip flag
 		{AgentAider, false, "aider"},
 		{AgentAider, true, "aider --yes"},
 	}

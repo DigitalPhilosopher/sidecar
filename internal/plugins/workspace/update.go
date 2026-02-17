@@ -1383,6 +1383,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+
+	default:
+		// Forward unrecognized CSI sequences (e.g. CSI u / kitty keyboard
+		// protocol) to tmux when in interactive mode.
+		if cmd := p.handleUnknownSequence(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	return p, tea.Batch(cmds...)
