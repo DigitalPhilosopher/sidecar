@@ -142,6 +142,11 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.createSkipPermissions = !p.createSkipPermissions
 		p.syncCreateModalFocus()
 		return nil
+	case createPlanModeID:
+		p.createFocus = 6
+		p.createPlanMode = !p.createPlanMode
+		p.syncCreateModalFocus()
+		return nil
 	}
 
 	if idx, ok := parseIndexedID(createBranchItemPrefix, action); ok && idx < len(p.branchFiltered) {

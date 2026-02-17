@@ -128,6 +128,7 @@ const (
 	AgentGemini   AgentType = "gemini"   // Gemini CLI
 	AgentCursor   AgentType = "cursor"   // Cursor Agent
 	AgentOpenCode AgentType = "opencode" // OpenCode
+	AgentPi       AgentType = "pi"       // Pi Agent
 	AgentCustom   AgentType = "custom"   // Custom command
 	AgentShell    AgentType = "shell"    // Project shell (not an AI agent)
 )
@@ -140,6 +141,12 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentGemini:   "--yolo",
 	AgentCursor:   "-f",
 	AgentOpenCode: "", // No known flag
+	AgentPi:       "", // No known flag
+}
+
+// PlanModeFlags maps agent types to their plan mode CLI flags.
+var PlanModeFlags = map[AgentType]string{
+	AgentClaude: "--permission-mode plan",
 }
 
 // AgentDisplayNames provides human-readable names for agent types.
@@ -150,6 +157,7 @@ var AgentDisplayNames = map[AgentType]string{
 	AgentGemini:   "Gemini CLI",
 	AgentCursor:   "Cursor Agent",
 	AgentOpenCode: "OpenCode",
+	AgentPi:       "Pi Agent",
 	AgentShell:    "Project Shell",
 }
 
@@ -161,6 +169,7 @@ var shellAgentAbbreviations = map[AgentType]string{
 	AgentGemini:   "Gemini",
 	AgentCursor:   "Cursor",
 	AgentOpenCode: "OpenCode",
+	AgentPi:       "Pi",
 }
 
 // AgentCommands maps agent types to their CLI commands.
@@ -171,6 +180,7 @@ var AgentCommands = map[AgentType]string{
 	AgentGemini:   "gemini",
 	AgentCursor:   "cursor-agent",
 	AgentOpenCode: "opencode",
+	AgentPi:       "pi",
 }
 
 // AgentTypeOrder defines the order of agents in selection UI.
@@ -180,6 +190,7 @@ var AgentTypeOrder = []AgentType{
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
+	AgentPi,
 	AgentNone,
 }
 
@@ -192,6 +203,7 @@ var ShellAgentOrder = []AgentType{
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
+	AgentPi,
 }
 
 // kanbanCardData stores column and row for Kanban card hit regions.
